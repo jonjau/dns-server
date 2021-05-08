@@ -11,7 +11,6 @@
 
 #include "dns_message.h"
 
-// inet_ntops
 // TODO: ERRNO error checking, assert mallocs
 // TODO: remove debug printf's
 
@@ -25,20 +24,21 @@ void log_query(FILE *fp, query_t *query);
 void log_answer(FILE *fp, record_t *answer);
 
 int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        perror("read");
+        exit(EXIT_FAILURE);
+    }
+
     size_t nbytes = read_msg_len(STDIN_FILENO);
     dns_message_t *msg = init_dns_message(STDIN_FILENO, nbytes);
-
-    // FILE *fp = fopen(LOG_FILE_PATH, "w");
-    FILE *fp = stdout;
+    FILE *fp = fopen(LOG_FILE_PATH, "w");
     if (!fp) {
         perror("read");
         exit(EXIT_FAILURE);
     }
-    // if at least 1 query then read the first one
-    if (msg->qdcount > 0) {
+    if (strcmp(argv[1], "query") == 0 && msg->qdcount > 0) {
         log_query(fp, &msg->queries[0]);
-    }
-    if (msg->ancount > 0) {
+    } else if (strcmp(argv[1], "response") == 0 && msg->ancount > 0) {
         log_answer(fp, &msg->answers[0]);
     }
 

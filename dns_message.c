@@ -29,19 +29,6 @@ dns_message_t *new_dns_message(size_t nbytes) {
     bytes->offset = 0;
 
     message->bytes = bytes;
-    message->id = 0;
-    message->qr = false;
-    message->opcode = 0;
-    message->aa = false;
-    message->tc = false;
-    message->rd = false;
-    message->ra = false;
-    message->rcode = 0;
-    message->qdcount = 0;
-    message->ancount = 0;
-    message->nscount = 0;
-    message->arcount = 0;
-
     message->queries = NULL;
     message->answers = NULL;
 

@@ -6,7 +6,7 @@
 CC=gcc
 OBJ=dns_message.o
 COPT=-Wall -Wpedantic -g
-BIN_PHASE1=dns_svr
+BIN_PHASE1=phase1
 # BIN_PHASE2=dns_query
 
 # Running "make" with no argument will make the first target in the file
@@ -20,8 +20,8 @@ all: $(BIN_PHASE1) #$(BIN_PHASE2)
 # $(BIN_PHASE2): main.c $(OBJ)
 # 	$(CC) -o $(BIN_PHASE2) main.c $(OBJ) $(COPT)
 
-$(BIN_PHASE1): dns_svr.c $(OBJ)
-	$(CC) -o $(BIN_PHASE1) dns_svr.c $(OBJ) $(COPT)
+$(BIN_PHASE1): phase1.c $(OBJ)
+	$(CC) -o $(BIN_PHASE1) phase1.c $(OBJ) $(COPT)
 
 # Wildcard rule to make any  .o  file,
 # given a .c and .h file with the same leading filename component
@@ -32,4 +32,4 @@ $(BIN_PHASE1): dns_svr.c $(OBJ)
 # 	clang-format -i *.c *.h
 
 clean:
-	rm -f $(BIN_PHASE1) *.o
+	rm -f $(BIN_PHASE1) *.o *.log
