@@ -70,9 +70,8 @@ void log_query(FILE *fp, query_t *query) {
     char *timestamp = malloc(TIMESTAMP_LEN);
     get_timestamp(timestamp, TIMESTAMP_LEN);
 
-    if (query->qtype == AAAA_RR_TYPE) {
-        fprintf(fp, "%s requested %s\n", timestamp, query->qname);
-    } else {
+    fprintf(fp, "%s requested %s\n", timestamp, query->qname);
+    if (query->qtype != AAAA_RR_TYPE) {
         fprintf(fp, "%s unimplemented request\n", timestamp);
     }
 
