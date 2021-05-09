@@ -24,16 +24,16 @@ void log_query(FILE *fp, query_t *query);
 void log_answer(FILE *fp, record_t *answer);
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        perror("read");
-        exit(EXIT_FAILURE);
-    }
+    if (argc < 3) {
+		fprintf(stderr, "usage %s hostname port\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
 
     size_t nbytes = read_msg_len(STDIN_FILENO);
     dns_message_t *msg = init_dns_message(STDIN_FILENO, nbytes);
     FILE *fp = fopen(LOG_FILE_PATH, "w");
     if (!fp) {
-        perror("read");
+        perror("open log file");
         exit(EXIT_FAILURE);
     }
     if (strcmp(argv[1], "query") == 0 && msg->qdcount > 0) {
@@ -73,9 +73,8 @@ void log_query(FILE *fp, query_t *query) {
     fprintf(fp, "%s requested %s\n", timestamp, query->qname);
     if (query->qtype != AAAA_RR_TYPE) {
         fprintf(fp, "%s unimplemented request\n", timestamp);
+        fflush(fp);
     }
-
-    // fflush();
     free(timestamp);
 }
 
@@ -87,6 +86,7 @@ void log_answer(FILE *fp, record_t *answer) {
     if (answer->type == AAAA_RR_TYPE) {
         fprintf(fp, "%s %s is at %s\n", timestamp, answer->name,
                 answer->rdata);
+        fflush(fp);
     }
     free(timestamp);
 }

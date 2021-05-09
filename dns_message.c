@@ -160,6 +160,7 @@ void read_answers(dns_message_t *msg) {
 
 dns_message_t *init_dns_message(int fd, size_t nbytes) {
     dns_message_t *msg = new_dns_message(nbytes);
+    // TODO: what if we can't read everything?
     if (read(fd, msg->bytes->data, nbytes) == -1) {
         perror("read");
         exit(EXIT_FAILURE);
