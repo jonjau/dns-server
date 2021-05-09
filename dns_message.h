@@ -6,8 +6,8 @@
 
 typedef struct {
     uint8_t *data;
-    size_t size;
-    size_t offset;
+    uint16_t size;
+    uint16_t offset;
 } bytes_t;
 
 typedef struct {
@@ -43,8 +43,8 @@ typedef struct {
     record_t *answers;
 } dns_message_t;
 
-dns_message_t *new_dns_message(size_t nbytes);
-dns_message_t *init_dns_message(int fd, size_t nbytes);
+dns_message_t *new_dns_message(uint16_t nbytes);
+dns_message_t *init_dns_message(uint8_t *data,  uint16_t nbytes);
 
 void free_dns_message(dns_message_t *msg);
 

@@ -11,7 +11,7 @@
 #include <time.h>
 #include <unistd.h>
 // #include <sys/types.h>
-// #include <sys/socket.h>
+#include <sys/socket.h>
 
 #include "dns_message.h"
 
@@ -25,7 +25,8 @@
 #define TCP_PORT "8053"
 
 char *get_timestamp(char *timestamp, size_t len);
-uint16_t read_msg_len(int fd);
+dns_message_t *read_dns_message(int fd);
+void write_dns_message(int fd, dns_message_t *msg);
 void log_query(FILE *fp, query_t *query);
 void log_answer(FILE *fp, record_t *answer);
 
@@ -38,6 +39,13 @@ int main(int argc, char *argv[]) {
     char *ups = argv[1];
     char *ups_port = argv[2];
 
+    // FILE *fp = fopen(LOG_FILE_PATH, "w");
+    FILE *log_fp = stdout;
+    if (!log_fp) {
+        perror("open log file");
+        exit(EXIT_FAILURE);
+    }
+
     // adapted from lab 9 solutions
     struct addrinfo hints, *rp, *ups_addrinfo;
 
@@ -46,16 +54,18 @@ int main(int argc, char *argv[]) {
     hints.ai_family = AF_INET;        // IPv4
     hints.ai_socktype = SOCK_STREAM;  // TCP
 
-    int status = getaddrinfo("8.8.8.8", "53", &hints, &ups_addrinfo);
+    int status = getaddrinfo(ups, ups_port, &hints, &ups_addrinfo);
     if (status != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
         exit(EXIT_FAILURE);
     }
 
-    // Reuse port if possible
+    // // Reuse port if possible
     // int enable = 1;
-    // if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int))
-    // < 0) { perror("setsockopt"); exit(1);
+    // if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) <
+    //     0) {
+    //     perror("setsockopt");
+    //     exit(1);
     // }
 
     int ups_sockfd;
@@ -67,7 +77,6 @@ int main(int argc, char *argv[]) {
         }
         if (connect(ups_sockfd, rp->ai_addr, rp->ai_addrlen) != -1) {
             // success
-            perror("asdas");
             break;
         }
         close(ups_sockfd);
@@ -77,33 +86,22 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    size_t nbytes = read_msg_len(STDIN_FILENO);
-    dns_message_t *msg = init_dns_message(STDIN_FILENO, nbytes);
-
-    // FILE *fp = fopen(LOG_FILE_PATH, "w");
-    FILE *fp = stdout;
-    if (!fp) {
-        perror("open log file");
-        exit(EXIT_FAILURE);
+    dns_message_t *msg = read_dns_message(STDIN_FILENO);
+    if (msg->qdcount > 0) {
+        log_query(log_fp, &msg->queries[0]);
     }
 
-    int n = write(ups_sockfd, msg->bytes->data, msg->bytes->size);
-    if (n < 0) {
-        perror("socket");
-        exit(EXIT_FAILURE);
+    write_dns_message(ups_sockfd, msg);
+
+    dns_message_t *msg2 = read_dns_message(ups_sockfd);
+    if (msg2->ancount > 0) {
+        log_answer(log_fp, &msg2->answers[0]);
     }
 
-    uint8_t raw[999];
-    n = read(ups_sockfd, raw, msg->bytes->size);
-    if (n < 0) {
-        perror("read");
-        exit(EXIT_FAILURE);
-    }
-    printf("%d %d %d\n", raw[0], raw[1], raw[2]);
+    fclose(log_fp);
 
-    // no need to parse or log authority/additional records
-    fclose(fp);
     free_dns_message(msg);
+    free_dns_message(msg2);
 
     close(ups_sockfd);
     freeaddrinfo(ups_addrinfo);
@@ -111,13 +109,40 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-uint16_t read_msg_len(int fd) {
-    uint16_t field;
-    if (read(STDIN_FILENO, &field, sizeof(field)) == -1) {
+dns_message_t *read_dns_message(int fd) {
+    uint16_t size_header;
+    if (read(fd, &size_header, sizeof(size_header)) == -1) {
         perror("read");
         exit(EXIT_FAILURE);
     }
-    return ntohs(field);
+    uint16_t msg_len = ntohs(size_header);
+    uint8_t msg[msg_len];
+
+    // TODO: what if we can't read everything?
+    if (read(fd, msg, msg_len) == -1) {
+        perror("read");
+        exit(EXIT_FAILURE);
+    }
+    return init_dns_message(msg, msg_len);
+}
+
+void write_dns_message(int fd, dns_message_t *msg) {
+    // TODO: DOWNCAST
+    uint16_t msg_len = msg->bytes->size;
+    uint16_t size_header = htons(msg_len);
+
+    size_t header_len = sizeof(size_header);
+    size_t buf_len = header_len + msg_len;
+
+    uint8_t buf[buf_len];
+    memcpy(buf, &size_header, header_len);
+    memcpy(buf + header_len, msg->bytes->data, msg_len);
+
+    int n = write(fd, buf, buf_len);
+    if (n < 0) {
+        perror("write");
+        exit(EXIT_FAILURE);
+    }
 }
 
 char *get_timestamp(char *timestamp, size_t len) {
@@ -132,10 +157,11 @@ void log_query(FILE *fp, query_t *query) {
     char timestamp[TIMESTAMP_LEN];
     get_timestamp(timestamp, TIMESTAMP_LEN);
 
-    if (query->qtype == AAAA_RR_TYPE) {
-        fprintf(fp, "%s requested %s\n", timestamp, query->qname);
-    } else {
+    fprintf(fp, "%s requested %s\n", timestamp, query->qname);
+    fflush(fp);
+    if (query->qtype != AAAA_RR_TYPE) {
         fprintf(fp, "%s unimplemented request\n", timestamp);
+        fflush(fp);
     }
 }
 
@@ -147,6 +173,7 @@ void log_answer(FILE *fp, record_t *answer) {
     if (answer->type == AAAA_RR_TYPE) {
         fprintf(fp, "%s %s is at %s\n", timestamp, answer->name,
                 answer->rdata);
+        fflush(fp);
     }
 }
 

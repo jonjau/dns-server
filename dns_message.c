@@ -3,36 +3,33 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <stdio.h>
 
 #include "dns_message.h"
 
 uint16_t read_field(uint16_t *field, bytes_t *bytes);
 uint8_t read_octet(uint8_t *octet, bytes_t *bytes);
 uint8_t *read_domain(uint8_t *domain, bytes_t *bytes);
-char *read_ip_addr(char *addr, size_t rdlen, bytes_t *bytes);
+char *read_ip_addr(char *addr, uint16_t rdlen, bytes_t *bytes);
 void read_header(dns_message_t *msg);
 void read_queries(dns_message_t *msg);
 void read_answers(dns_message_t *msg);
 
-dns_message_t *new_dns_message(size_t nbytes) {
-
-    dns_message_t *message = malloc(sizeof(*message));
+dns_message_t *new_dns_message(uint16_t nbytes) {
+    dns_message_t *msg = malloc(sizeof(*msg));
     bytes_t *bytes = malloc(sizeof(*bytes));
     uint8_t *data = malloc(nbytes * sizeof(*data));
-    assert(message && bytes && data);
+    assert(msg && bytes && data);
 
     bytes->data = data;
     bytes->size = nbytes;
     bytes->offset = 0;
 
-    message->bytes = bytes;
-    message->queries = NULL;
-    message->answers = NULL;
+    msg->bytes = bytes;
+    msg->queries = NULL;
+    msg->answers = NULL;
 
-    return message;
+    return msg;
 }
 
 
@@ -70,7 +67,7 @@ uint8_t *read_domain(uint8_t *domain, bytes_t *bytes) {
     return domain;
 }
 
-char *read_ip_addr(char *addr, size_t rdlen, bytes_t *bytes) {
+char *read_ip_addr(char *addr, uint16_t rdlen, bytes_t *bytes) {
     inet_ntop(AF_INET6, bytes->data + bytes->offset, addr, INET6_ADDRSTRLEN);
     bytes->offset += rdlen * sizeof(*addr);
     return addr;
@@ -83,7 +80,7 @@ void read_header(dns_message_t *msg) {
 
     uint16_t flags;
     read_field(&flags, bytes);
-    // TODO: consider shift and shift to read
+    // TODO: consider shift and shift to read or #define'ing masks
     msg->qr = (flags >> 15) & 1;
     msg->opcode = (flags >> 11) & 0xF;
     msg->aa = (flags >> 10) & 1;
@@ -132,7 +129,7 @@ void read_answers(dns_message_t *msg) {
         // clear first two bits (16th and 15th)
         name_offset &= ~((1 << 15) | (1 << 14));
 
-        size_t old_offset = bytes->offset;
+        uint16_t old_offset = bytes->offset;
         bytes->offset = name_offset;
         answer.name = malloc(bytes->size * sizeof(*answer.name));
         *answer.name = '\0';
@@ -158,13 +155,9 @@ void read_answers(dns_message_t *msg) {
     msg->answers = answers;
 }
 
-dns_message_t *init_dns_message(int fd, size_t nbytes) {
+dns_message_t *init_dns_message(uint8_t *data,  uint16_t nbytes) {
     dns_message_t *msg = new_dns_message(nbytes);
-    // TODO: what if we can't read everything?
-    if (read(fd, msg->bytes->data, nbytes) == -1) {
-        perror("read");
-        exit(EXIT_FAILURE);
-    }
+    memcpy(msg->bytes->data, data, nbytes);
     msg->bytes->size = nbytes;
     msg->bytes->offset = 0;
 
