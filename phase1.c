@@ -10,12 +10,12 @@
 #include <unistd.h>
 
 #include "dns_message.h"
+#include "util.h"
 
 #define AAAA_RR_TYPE 28
 #define TIMESTAMP_LEN 41  // based on reasonable ISO 8601 limits
 #define LOG_FILE_PATH "./dns_svr.log"
 
-char *get_timestamp(char *timestamp, size_t len);
 uint16_t read_msg_len(int fd);
 void log_query(FILE *fp, query_t *query);
 void log_answer(FILE *fp, record_t *answer);
@@ -60,17 +60,6 @@ uint16_t read_msg_len(int fd) {
         exit(EXIT_FAILURE);
     }
     return ntohs(field);
-}
-
-// Get the current timestamp and put it in `timestamp`, which has
-// length `len`, formatted like 2021-05-10T02:07:11+0000. Returns a pointer
-// to `timestamp`
-char *get_timestamp(char *timestamp, size_t len) {
-    const time_t rawtime = time(NULL);
-    struct tm *tm = gmtime(&rawtime);
-
-    strftime(timestamp, len, "%FT%T%z", tm);
-    return timestamp;
 }
 
 // Print to `fp` the timestamped logs for when a query `query` is received by

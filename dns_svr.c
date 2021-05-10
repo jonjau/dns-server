@@ -8,33 +8,34 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <unistd.h>
 // #include <sys/types.h>
 #include <sys/socket.h>
 
 #include "dns_message.h"
+#include "util.h"
 
 // inet_ntops
 // TODO: ERRNO error checking, assert mallocs
 // TODO: remove debug printf's
-// TODO: setsockopt thing from spec
 
 #define AAAA_RR_TYPE 28
 #define TIMESTAMP_LEN 41  // based on reasonable ISO 8601 limits
+#define CONNECTION_QUEUE_SIZE 5
+#define NOT_IMPLEMENTED_RCODE 4
 #define LOG_FILE_PATH "./dns_svr.log"
 #define TCP_PORT "8053"
 
-char *get_timestamp(char *timestamp, size_t len);
-dns_message_t *read_dns_message(int fd);
 int setup_client_socket(const char *server_name, const char *port);
 int setup_server_socket(const char *port);
-void write_dns_message(int fd, dns_message_t *msg);
-void log_query(FILE *fp, query_t *query);
-void log_answer(FILE *fp, record_t *answer);
+int accept_client_connection(int serv_sockfd);
 
-size_t read_fully(int fd, uint8_t *buf, size_t nbytes);
-size_t write_fully(int fd, uint8_t *buf, size_t nbytes);
+dns_message_t *read_dns_message(int fd);
+void write_dns_message(int fd, dns_message_t *msg);
+
+void log_query(FILE *fp, query_t *query);
+void log_unimplemented(FILE *fp);
+void log_answer(FILE *fp, record_t *answer);
 
 // 172.20.96.1:53
 int main(int argc, char *argv[]) {
@@ -45,52 +46,50 @@ int main(int argc, char *argv[]) {
     char *ups = argv[1];
     char *ups_port = argv[2];
 
-    // TODO:
     FILE *log_fp = fopen(LOG_FILE_PATH, "w");
-    // FILE *log_fp = stdout;
     if (!log_fp) {
         perror("open log file");
         exit(EXIT_FAILURE);
     }
 
+    // setup a socket for listening, and another for forwarding to upstream
     int serv_sockfd = setup_server_socket(TCP_PORT);
     int ups_sockfd = setup_client_socket(ups, ups_port);
 
     // queue up to 5 connection requests
-    if (listen(serv_sockfd, 5) < 0) {
+    if (listen(serv_sockfd, CONNECTION_QUEUE_SIZE) < 0) {
         perror("listen");
         exit(EXIT_FAILURE);
     }
 
-    struct sockaddr_storage client_addr;
-    memset(&client_addr, 0, sizeof(client_addr));
-    socklen_t client_addr_size = 0;
-    int sockfd;
-
+    dns_message_t *msg_send, *msg_recv;
     while (true) {
-        sockfd = accept(serv_sockfd, (struct sockaddr *)&client_addr,
-                            &client_addr_size);
-        if (sockfd < 0) {
-            perror("accept");
-            exit(EXIT_FAILURE);
+        int sockfd = accept_client_connection(serv_sockfd);
+
+        msg_send = read_dns_message(sockfd);
+        if (msg_send->qdcount > 0) {
+            log_query(log_fp, &msg_send->queries[0]);
         }
+        // we are allowed to assume only one query per message
+        if (msg_send->queries[0].qtype != AAAA_RR_TYPE) {
+            log_unimplemented(log_fp);
+            msg_send->rcode = NOT_IMPLEMENTED_RCODE;
+            msg_send->qr = true;
 
-        dns_message_t *msg = read_dns_message(sockfd);
-        if (msg->qdcount > 0) {
-            log_query(log_fp, &msg->queries[0]);
+            write_dns_message(sockfd, msg_send);
+            free_dns_message(msg_send);
+
+        } else {
+            write_dns_message(ups_sockfd, msg_send);
+            free_dns_message(msg_send);
+
+            msg_recv = read_dns_message(ups_sockfd);
+            if (msg_recv->ancount > 0) {
+                log_answer(log_fp, &msg_recv->answers[0]);
+            }
+            write_dns_message(sockfd, msg_recv);
+            free_dns_message(msg_recv);
         }
-
-        write_dns_message(ups_sockfd, msg);
-
-        dns_message_t *msg2 = read_dns_message(ups_sockfd);
-        if (msg2->ancount > 0) {
-            log_answer(log_fp, &msg2->answers[0]);
-        }
-        write_dns_message(sockfd, msg2);
-
-        free_dns_message(msg);
-        free_dns_message(msg2);
-        
         close(sockfd);
     }
     close(ups_sockfd);
@@ -140,6 +139,19 @@ int setup_server_socket(const char *port) {
         exit(EXIT_FAILURE);
     }
     freeaddrinfo(addrinfo);
+    return sockfd;
+}
+
+int accept_client_connection(int serv_sockfd) {
+    struct sockaddr_storage client_addr;
+    memset(&client_addr, 0, sizeof(client_addr));
+    socklen_t client_addr_size = 0;
+    int sockfd = accept(serv_sockfd, (struct sockaddr *)&client_addr,
+                        &client_addr_size);
+    if (sockfd < 0) {
+        perror("accept");
+        exit(EXIT_FAILURE);
+    }
     return sockfd;
 }
 
@@ -194,21 +206,6 @@ dns_message_t *read_dns_message(int fd) {
 
     read_fully(fd, msg, msg_len);
 
-    // // TODO: what if we can't read everything?
-    // int total_nread = 0;
-    // int nread = 0;
-    // while (true) {
-    //     nread = read(fd, msg + total_nread, msg_len);
-    //     if (nread < 0) {
-    //         perror("read");
-    //         exit(EXIT_FAILURE);
-    //     }
-    //     total_nread += nread;
-
-    //     if (total_nread == msg_len) {
-    //         break;
-    //     }
-    // }
     return init_dns_message(msg, msg_len);
 }
 
@@ -226,22 +223,9 @@ void write_dns_message(int fd, dns_message_t *msg) {
     memcpy(buf + header_len, msg->bytes->data, msg_len);
 
     write_fully(fd, buf, buf_len);
-    // if (write(fd, buf, buf_len) < 0) {
-    //     perror("write");
-    //     exit(EXIT_FAILURE);
-    // }
 }
 
-// Get the current timestamp and put it in `timestamp`, which has
-// length `len`, formatted like 2021-05-10T02:07:11+0000. Returns a pointer
-// to `timestamp`
-char *get_timestamp(char *timestamp, size_t len) {
-    const time_t rawtime = time(NULL);
-    struct tm *tm = gmtime(&rawtime);
 
-    strftime(timestamp, len, "%FT%T%z", tm);
-    return timestamp;
-}
 
 // Print to `fp` the timestamped logs for when a query `query` is received by
 // this server.
@@ -251,10 +235,16 @@ void log_query(FILE *fp, query_t *query) {
 
     fprintf(fp, "%s requested %s\n", timestamp, query->qname);
     fflush(fp);
-    if (query->qtype != AAAA_RR_TYPE) {
-        fprintf(fp, "%s unimplemented request\n", timestamp);
-        fflush(fp);
-    }
+}
+
+// Print to `fp` the timestamped logs for when a query `query` is detected
+// as unimplemented by this server.
+void log_unimplemented(FILE *fp) {
+    char timestamp[TIMESTAMP_LEN];
+    get_timestamp(timestamp, TIMESTAMP_LEN);
+
+    fprintf(fp, "%s unimplemented request\n", timestamp);
+    fflush(fp);
 }
 
 // Print to `fp` the timestamped logs for when an resource record `answer`
@@ -271,38 +261,3 @@ void log_answer(FILE *fp, record_t *answer) {
     }
 }
 
-size_t read_fully(int fd, uint8_t *buf, size_t nbytes) {
-    size_t total_nread = 0;
-    size_t nread = 0;
-    while (true) {
-        nread = read(fd, buf + total_nread, nbytes);
-        if (nread < 0) {
-            perror("read");
-            exit(EXIT_FAILURE);
-        }
-        total_nread += nread;
-
-        if (total_nread == nbytes) {
-            break;
-        }
-    }
-    return total_nread;
-}
-
-size_t write_fully(int fd, uint8_t *buf, size_t nbytes) {
-    size_t total_nwritten = 0;
-    size_t nwritten = 0;
-    while (true) {
-        nwritten = write(fd, buf + total_nwritten, nbytes);
-        if (nwritten < 0) {
-            perror("write");
-            exit(EXIT_FAILURE);
-        }
-        total_nwritten += nwritten;
-
-        if (total_nwritten == nbytes) {
-            break;
-        }
-    }
-    return total_nwritten;
-}
