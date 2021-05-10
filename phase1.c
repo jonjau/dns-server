@@ -29,8 +29,14 @@ int main(int argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
-    size_t nbytes = read_msg_len(STDIN_FILENO);
-    dns_message_t *msg = init_dns_message(STDIN_FILENO, nbytes);
+    uint16_t msg_len = read_msg_len(STDIN_FILENO);
+    uint8_t buf[msg_len];
+    if (read(STDIN_FILENO, buf, msg_len) == -1) {
+        perror("read");
+        exit(EXIT_FAILURE);
+    }
+    dns_message_t *msg = init_dns_message(buf, msg_len);
+
     FILE *fp = fopen(LOG_FILE_PATH, "w");
     if (!fp) {
         perror("open log file");
@@ -49,15 +55,19 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
+// Read and returns the message length, read from `fd`.
 uint16_t read_msg_len(int fd) {
     uint16_t field;
-    if (read(STDIN_FILENO, &field, sizeof(field)) == -1) {
+    if (read(fd, &field, sizeof(field)) == -1) {
         perror("read");
         exit(EXIT_FAILURE);
     }
     return ntohs(field);
 }
 
+// Get the current timestamp and put it in `timestamp`, which has
+// length `len`, formatted like 2021-05-10T02:07:11+0000. Returns a pointer
+// to `timestamp`
 char *get_timestamp(char *timestamp, size_t len) {
     const time_t rawtime = time(NULL);
     struct tm *tm = gmtime(&rawtime);
@@ -66,27 +76,30 @@ char *get_timestamp(char *timestamp, size_t len) {
     return timestamp;
 }
 
+// Print to `fp` the timestamped logs for when a query `query` is received by
+// this server
 void log_query(FILE *fp, query_t *query) {
-    char *timestamp = malloc(TIMESTAMP_LEN);
+    char timestamp[TIMESTAMP_LEN];
     get_timestamp(timestamp, TIMESTAMP_LEN);
 
     fprintf(fp, "%s requested %s\n", timestamp, query->qname);
+    fflush(fp);
     if (query->qtype != AAAA_RR_TYPE) {
         fprintf(fp, "%s unimplemented request\n", timestamp);
         fflush(fp);
     }
-    free(timestamp);
 }
 
+// Print to `fd` the timestamped logs for when an resource record `answer`
+// is to be returned by this server.
 void log_answer(FILE *fp, record_t *answer) {
-    char *timestamp = malloc(TIMESTAMP_LEN);
+    char timestamp[TIMESTAMP_LEN];
     get_timestamp(timestamp, TIMESTAMP_LEN);
 
-    // TODO: necessary check?
+    // just in case, ensure answer is IPv6
     if (answer->type == AAAA_RR_TYPE) {
         fprintf(fp, "%s %s is at %s\n", timestamp, answer->name,
                 answer->rdata);
         fflush(fp);
     }
-    free(timestamp);
 }
