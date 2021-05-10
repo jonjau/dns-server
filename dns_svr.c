@@ -33,6 +33,9 @@ void write_dns_message(int fd, dns_message_t *msg);
 void log_query(FILE *fp, query_t *query);
 void log_answer(FILE *fp, record_t *answer);
 
+size_t read_fully(int fd, uint8_t *buf, size_t nbytes);
+size_t write_fully(int fd, uint8_t *buf, size_t nbytes);
+
 // 172.20.96.1:53
 int main(int argc, char *argv[]) {
     if (argc < 3) {
@@ -60,7 +63,8 @@ int main(int argc, char *argv[]) {
     }
 
     struct sockaddr_storage client_addr;
-    socklen_t client_addr_size;
+    memset(&client_addr, 0, sizeof(client_addr));
+    socklen_t client_addr_size = 0;
     int sockfd;
 
     while (true) {
@@ -188,11 +192,23 @@ dns_message_t *read_dns_message(int fd) {
     uint16_t msg_len = ntohs(size_header);
     uint8_t msg[msg_len];
 
-    // TODO: what if we can't read everything?
-    if (read(fd, msg, msg_len) == -1) {
-        perror("read");
-        exit(EXIT_FAILURE);
-    }
+    read_fully(fd, msg, msg_len);
+
+    // // TODO: what if we can't read everything?
+    // int total_nread = 0;
+    // int nread = 0;
+    // while (true) {
+    //     nread = read(fd, msg + total_nread, msg_len);
+    //     if (nread < 0) {
+    //         perror("read");
+    //         exit(EXIT_FAILURE);
+    //     }
+    //     total_nread += nread;
+
+    //     if (total_nread == msg_len) {
+    //         break;
+    //     }
+    // }
     return init_dns_message(msg, msg_len);
 }
 
@@ -209,10 +225,11 @@ void write_dns_message(int fd, dns_message_t *msg) {
     memcpy(buf, &size_header, header_len);
     memcpy(buf + header_len, msg->bytes->data, msg_len);
 
-    if (write(fd, buf, buf_len) < 0) {
-        perror("write");
-        exit(EXIT_FAILURE);
-    }
+    write_fully(fd, buf, buf_len);
+    // if (write(fd, buf, buf_len) < 0) {
+    //     perror("write");
+    //     exit(EXIT_FAILURE);
+    // }
 }
 
 // Get the current timestamp and put it in `timestamp`, which has
@@ -254,67 +271,38 @@ void log_answer(FILE *fp, record_t *answer) {
     }
 }
 
-/*
-
-
-    // Create socket
-    sockfd = socket(servinfo->ai_family, servinfo->ai_socktype,
-                    servinfo->ai_protocol);
-    if (sockfd < 0) {
-        perror("socket");
-        exit(EXIT_FAILURE);
-    }
-
-    // Bind address to the socket
-    if (bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) < 0) {
-        perror("bind");
-        exit(EXIT_FAILURE);
-    }
-    freeaddrinfo(servinfo);
-
-    // Listen on socket - means we're ready to accept connections,
-    // incoming connection requests will be queued, man 3 listen
-    if (listen(sockfd, 5) < 0) {
-        perror("listen");
-        exit(EXIT_FAILURE);
-    }
-
+size_t read_fully(int fd, uint8_t *buf, size_t nbytes) {
+    size_t total_nread = 0;
+    size_t nread = 0;
     while (true) {
-        // accept connection, we don't care from where
-        int newsockfd = accept(sockfd, NULL, NULL);
-        if (newsockfd < 0) {
-            perror("accept");
+        nread = read(fd, buf + total_nread, nbytes);
+        if (nread < 0) {
+            perror("read");
             exit(EXIT_FAILURE);
         }
+        total_nread += nread;
 
-        size_t nbytes = read_msg_len(newsockfd);
-        dns_message_t *msg = init_dns_message(newsockfd, nbytes);
-
-        int status2 = getaddrinfo(dst, dst_port, &hints, &upstreaminfo);
-        if (status2 != 0) {
-            fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status2));
-            exit(EXIT_FAILURE);
+        if (total_nread == nbytes) {
+            break;
         }
-
-        for (rp = servinfo; rp != NULL; rp = rp->ai_next) {
-            upstreamsockfd = socket(rp->ai_family, rp->ai_socktype,
-   rp->ai_protocol); if (sockfd == -1) { continue;
-            }
-            if (connect(upstreamsockfd, rp->ai_addr, rp->ai_addrlen) != -1) {
-                break;  // success
-            }
-            close(sockfd);
-        }
-        if (rp == NULL) {
-            fprintf(stderr, "failed to connect\n");
-            exit(EXIT_FAILURE);
-        }
-        freeaddrinfo(servinfo);
-
-        // TODO: what if we can't write everything?
-        int n = write(upstreamsockfd, msg->bytes->data, msg->bytes->size);
-
-        free_dns_message(msg);
     }
+    return total_nread;
+}
 
-*/
+size_t write_fully(int fd, uint8_t *buf, size_t nbytes) {
+    size_t total_nwritten = 0;
+    size_t nwritten = 0;
+    while (true) {
+        nwritten = write(fd, buf + total_nwritten, nbytes);
+        if (nwritten < 0) {
+            perror("write");
+            exit(EXIT_FAILURE);
+        }
+        total_nwritten += nwritten;
+
+        if (total_nwritten == nbytes) {
+            break;
+        }
+    }
+    return total_nwritten;
+}
