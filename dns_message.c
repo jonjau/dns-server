@@ -15,6 +15,9 @@ void read_header(dns_message_t *msg);
 void read_queries(dns_message_t *msg);
 void read_answers(dns_message_t *msg);
 
+// Allocates a dns_message, based on the length of the message in bytes
+// `nbytes`, and returns it uninitialised, The queries and answer section are
+// not allocated, (they will be allocated at initialisation).
 dns_message_t *new_dns_message(uint16_t nbytes) {
     dns_message_t *msg = malloc(sizeof(*msg));
     bytes_t *bytes = malloc(sizeof(*bytes));
@@ -32,7 +35,8 @@ dns_message_t *new_dns_message(uint16_t nbytes) {
     return msg;
 }
 
-
+// Copies two octets from `bytes` to `field`, keeping track of the offset
+// and returns the integer value in host byte order.
 uint16_t read_field(uint16_t *field, bytes_t *bytes) {
     memcpy(field, bytes->data + bytes->offset, sizeof(*field));
     bytes->offset += sizeof(*field);
@@ -40,6 +44,8 @@ uint16_t read_field(uint16_t *field, bytes_t *bytes) {
     return *field;
 }
 
+// Copies an octet from `bytes` to `field`, keeping track of the offset and
+// returns the integer value of the octet read.
 uint8_t read_octet(uint8_t *octet, bytes_t *bytes) {
     memcpy(octet, bytes->data + bytes->offset, sizeof(*octet));
     bytes->offset += sizeof(*octet);
@@ -123,7 +129,7 @@ void read_answers(dns_message_t *msg) {
         uint16_t name_offset = 0;
         read_field(&name_offset, bytes);
 
-        // check that first two bits in 16-bit field are 0b11.
+        // check that first (leftmost) two bits in 16-bit field are 0b11.
         assert(((name_offset >> 14) ^ 0x3) == 0);
 
         // clear first two bits (16th and 15th)
@@ -155,6 +161,9 @@ void read_answers(dns_message_t *msg) {
     msg->answers = answers;
 }
 
+// Creates and initialises a dns_message then returns it, filling in the
+// header, question and answers section and nothing more, from bytes `data` of 
+// length `nbytes`.
 dns_message_t *init_dns_message(uint8_t *data,  uint16_t nbytes) {
     dns_message_t *msg = new_dns_message(nbytes);
     memcpy(msg->bytes->data, data, nbytes);
@@ -168,6 +177,7 @@ dns_message_t *init_dns_message(uint8_t *data,  uint16_t nbytes) {
     return msg;
 }
 
+// Frees a dns_message: make sure it was initialised before calling this.
 void free_dns_message(dns_message_t *msg) {
     free(msg->bytes->data);
     free(msg->bytes);
