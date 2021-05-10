@@ -195,3 +195,15 @@ void free_dns_message(dns_message_t *msg) {
 
     free(msg);
 }
+
+uint16_t get_flags(dns_message_t *msg) {
+    uint16_t flags = 0;
+    flags |= msg->qr << QR_POS;
+    flags |= msg->opcode << OPCODE_POS;
+    flags |= msg->aa << AA_POS;
+    flags |= msg->tc << TC_POS;
+    flags |= msg->rd << RD_POS;
+    flags |= msg->ra << RA_POS;
+    flags |= msg->rcode << RCODE_POS;
+    return flags;
+}

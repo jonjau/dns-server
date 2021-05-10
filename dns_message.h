@@ -4,6 +4,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define QR_POS 15
+#define OPCODE_POS 14
+#define AA_POS 10
+#define TC_POS 9
+#define RD_POS 8
+#define RA_POS 7
+#define RCODE_POS 0
+
 typedef struct {
     uint8_t *data;
     uint16_t size;
@@ -26,7 +34,6 @@ typedef struct {
 } record_t;
 
 typedef struct {
-    bytes_t *bytes;
     uint16_t id;
     bool qr;
     uint8_t opcode;
@@ -41,10 +48,12 @@ typedef struct {
     uint16_t arcount;
     query_t *queries;
     record_t *answers;
+    bytes_t *bytes;
 } dns_message_t;
 
 dns_message_t *new_dns_message(uint16_t nbytes);
 dns_message_t *init_dns_message(uint8_t *data,  uint16_t nbytes);
+uint16_t get_flags(dns_message_t *msg);
 
 void free_dns_message(dns_message_t *msg);
 

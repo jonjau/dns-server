@@ -1,7 +1,5 @@
 #define _POSIX_C_SOURCE 200112L
 #include <arpa/inet.h>
-#include <assert.h>
-#include <getopt.h>
 #include <netdb.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -9,15 +7,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-// #include <sys/types.h>
+#include <sys/types.h>
+#include <stddef.h>
 #include <sys/socket.h>
 
 #include "dns_message.h"
 #include "util.h"
-
-// inet_ntops
-// TODO: ERRNO error checking, assert mallocs
-// TODO: remove debug printf's
 
 #define AAAA_RR_TYPE 28
 #define TIMESTAMP_LEN 41  // based on reasonable ISO 8601 limits
@@ -73,8 +68,19 @@ int main(int argc, char *argv[]) {
         // we are allowed to assume only one query per message
         if (msg_send->queries[0].qtype != AAAA_RR_TYPE) {
             log_unimplemented(log_fp);
+            uint16_t flags = get_flags(msg_send);
+
             msg_send->rcode = NOT_IMPLEMENTED_RCODE;
+            flags |= msg_send->rcode << RCODE_POS;
+
             msg_send->qr = true;
+            flags |= msg_send->qr << QR_POS;
+            // printf("%u\n", (unsigned int) flags);
+
+            uint16_t offset = offsetof(dns_message_t, qr);
+            memcpy(msg_send->bytes->data + offset, &flags, sizeof(flags));
+            // uint8_t copied = *(msg_send->bytes->data + offset);
+            // printf("%u\n", (unsigned int) copied);
 
             write_dns_message(sockfd, msg_send);
             free_dns_message(msg_send);

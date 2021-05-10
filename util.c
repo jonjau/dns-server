@@ -53,3 +53,13 @@ char *get_timestamp(char *timestamp, size_t len) {
     strftime(timestamp, len, "%FT%T%z", tm);
     return timestamp;
 }
+
+uint16_t setbits(uint16_t x, int p, int n, uint16_t y) {
+    uint16_t mask = (1 << n) - 1;
+    y &= mask;
+    y <<= p;
+    mask <<= p;
+    x &= ~mask;
+    x |= y;
+    return x;
+}
