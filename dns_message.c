@@ -1,11 +1,10 @@
-#include <stdlib.h>
-#include <assert.h>
+#include "dns_message.h"
+
 #include <arpa/inet.h>
-#include <time.h>
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "dns_message.h"
+#include <time.h>
 
 uint16_t read_field(uint16_t *field, bytes_t *bytes);
 uint8_t read_octet(uint8_t *octet, bytes_t *bytes);
@@ -106,7 +105,7 @@ void read_queries(dns_message_t *msg) {
     bytes_t *bytes = msg->bytes;
     query_t *queries = malloc(msg->qdcount * sizeof(*queries));
 
-    for (size_t i=0; i<msg->qdcount; i++) {
+    for (size_t i = 0; i < msg->qdcount; i++) {
         query_t query;
         query.qname = malloc(bytes->size * sizeof(*query.qname));
         *query.qname = '\0';
@@ -124,7 +123,7 @@ void read_answers(dns_message_t *msg) {
     bytes_t *bytes = msg->bytes;
     record_t *answers = malloc(msg->ancount * sizeof(*answers));
 
-    for (size_t i=0; i<msg->ancount; i++) {
+    for (size_t i = 0; i < msg->ancount; i++) {
         record_t answer;
         uint16_t name_offset = 0;
         read_field(&name_offset, bytes);
@@ -162,9 +161,9 @@ void read_answers(dns_message_t *msg) {
 }
 
 // Creates and initialises a dns_message then returns it, filling in the
-// header, question and answers section and nothing more, from bytes `data` of 
-// length `nbytes`.
-dns_message_t *init_dns_message(uint8_t *data,  uint16_t nbytes) {
+// header, question and answers section and nothing more, from bytes `data`
+// of length `nbytes`.
+dns_message_t *init_dns_message(uint8_t *data, uint16_t nbytes) {
     dns_message_t *msg = new_dns_message(nbytes);
     memcpy(msg->bytes->data, data, nbytes);
     msg->bytes->size = nbytes;
@@ -182,12 +181,12 @@ void free_dns_message(dns_message_t *msg) {
     free(msg->bytes->data);
     free(msg->bytes);
 
-    for (size_t i=0; i<msg->qdcount; i++) {
+    for (size_t i = 0; i < msg->qdcount; i++) {
         free(msg->queries[i].qname);
     }
     free(msg->queries);
 
-    for (size_t i=0; i<msg->ancount; i++) {
+    for (size_t i = 0; i < msg->ancount; i++) {
         free(msg->answers[i].name);
         free(msg->answers[i].rdata);
     }

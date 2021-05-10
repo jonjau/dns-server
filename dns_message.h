@@ -12,11 +12,8 @@
 #define RA_POS 7
 #define RCODE_POS 0
 
-typedef struct {
-    uint8_t *data;
-    uint16_t size;
-    uint16_t offset;
-} bytes_t;
+#define AAAA_RR_TYPE 28
+#define NOT_IMPLEMENTED_RCODE 4
 
 typedef struct {
     uint16_t qtype;
@@ -32,6 +29,12 @@ typedef struct {
     uint16_t rdlen;
     char *rdata;
 } record_t;
+
+typedef struct {
+    uint8_t *data;
+    uint16_t size;
+    uint16_t offset;
+} bytes_t;
 
 typedef struct {
     uint16_t id;

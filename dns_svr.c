@@ -14,10 +14,7 @@
 #include "dns_message.h"
 #include "util.h"
 
-#define AAAA_RR_TYPE 28
-#define TIMESTAMP_LEN 41  // based on reasonable ISO 8601 limits
 #define CONNECTION_QUEUE_SIZE 5
-#define NOT_IMPLEMENTED_RCODE 4
 #define LOG_FILE_PATH "./dns_svr.log"
 #define TCP_PORT "8053"
 
@@ -75,10 +72,13 @@ int main(int argc, char *argv[]) {
 
             msg_send->qr = true;
             flags |= msg_send->qr << QR_POS;
+            flags = htons(flags);
             // printf("%u\n", (unsigned int) flags);
 
             uint16_t offset = offsetof(dns_message_t, qr);
             memcpy(msg_send->bytes->data + offset, &flags, sizeof(flags));
+
+            // dns_message_t *aaa = init_dns_message(msg_send->bytes->data, msg_send->bytes->size);
             // uint8_t copied = *(msg_send->bytes->data + offset);
             // printf("%u\n", (unsigned int) copied);
 
@@ -230,8 +230,6 @@ void write_dns_message(int fd, dns_message_t *msg) {
 
     write_fully(fd, buf, buf_len);
 }
-
-
 
 // Print to `fp` the timestamped logs for when a query `query` is received by
 // this server.
