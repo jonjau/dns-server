@@ -11,9 +11,6 @@
 
 #include "dns_message.h"
 
-// TODO: ERRNO error checking, assert mallocs
-// TODO: remove debug printf's
-
 #define AAAA_RR_TYPE 28
 #define TIMESTAMP_LEN 41  // based on reasonable ISO 8601 limits
 #define LOG_FILE_PATH "./dns_svr.log"
@@ -24,8 +21,8 @@ void log_query(FILE *fp, query_t *query);
 void log_answer(FILE *fp, record_t *answer);
 
 int main(int argc, char *argv[]) {
-    if (argc < 3) {
-		fprintf(stderr, "usage %s hostname port\n", argv[0]);
+    if (argc < 2) {
+		fprintf(stderr, "usage %s [query|response]\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 

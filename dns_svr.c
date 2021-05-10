@@ -53,6 +53,7 @@ int main(int argc, char *argv[]) {
     int serv_sockfd = setup_server_socket(TCP_PORT);
     int ups_sockfd = setup_client_socket(ups, ups_port);
 
+    // queue up to 5 connection requests
     if (listen(serv_sockfd, 5) < 0) {
         perror("listen");
         exit(EXIT_FAILURE);
@@ -60,34 +61,37 @@ int main(int argc, char *argv[]) {
 
     struct sockaddr_storage client_addr;
     socklen_t client_addr_size;
-    int sockfd = accept(serv_sockfd, (struct sockaddr *)&client_addr,
-                        &client_addr_size);
-    if (sockfd < 0) {
-        perror("accept");
-        exit(EXIT_FAILURE);
+    int sockfd;
+
+    while (true) {
+        sockfd = accept(serv_sockfd, (struct sockaddr *)&client_addr,
+                            &client_addr_size);
+        if (sockfd < 0) {
+            perror("accept");
+            exit(EXIT_FAILURE);
+        }
+
+        dns_message_t *msg = read_dns_message(sockfd);
+        if (msg->qdcount > 0) {
+            log_query(log_fp, &msg->queries[0]);
+        }
+
+        write_dns_message(ups_sockfd, msg);
+
+        dns_message_t *msg2 = read_dns_message(ups_sockfd);
+        if (msg2->ancount > 0) {
+            log_answer(log_fp, &msg2->answers[0]);
+        }
+        write_dns_message(sockfd, msg2);
+
+        free_dns_message(msg);
+        free_dns_message(msg2);
+        
+        close(sockfd);
     }
-
-    dns_message_t *msg = read_dns_message(sockfd);
-    if (msg->qdcount > 0) {
-        log_query(log_fp, &msg->queries[0]);
-    }
-
-    write_dns_message(ups_sockfd, msg);
-
-    dns_message_t *msg2 = read_dns_message(ups_sockfd);
-    if (msg2->ancount > 0) {
-        log_answer(log_fp, &msg2->answers[0]);
-    }
-    write_dns_message(sockfd, msg2);
-
-    free_dns_message(msg);
-    free_dns_message(msg2);
-    close(sockfd);
-
-    fclose(log_fp);
-
-    close(serv_sockfd);
     close(ups_sockfd);
+    close(serv_sockfd);
+    fclose(log_fp);
 
     return 0;
 }
