@@ -1,3 +1,10 @@
+/**
+ * COMP30023 Project 2
+ * Author: Jonathan Jauhari 1038331
+ *
+ * Util module containing miscellaneous functions
+ */
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -7,6 +14,9 @@
 
 #include "util.h"
 
+// Reads `nbytes` bytes into `buf` from `fd`, if one call to read() does
+// not fully read the message, this function continues until the entire
+// message is read. Exits if error.
 size_t read_fully(int fd, uint8_t *buf, size_t nbytes) {
     size_t total_nread = 0;
     size_t nread = 0;
@@ -25,6 +35,9 @@ size_t read_fully(int fd, uint8_t *buf, size_t nbytes) {
     return total_nread;
 }
 
+// Writes `nbytes` bytes of `buf` to `fd`, if one call to write() does
+// not fully write the message, this function continues until the entire
+// message is written. Exits if error.
 size_t write_fully(int fd, uint8_t *buf, size_t nbytes) {
     size_t total_nwritten = 0;
     size_t nwritten = 0;
@@ -52,14 +65,4 @@ char *get_timestamp(char *timestamp, size_t len) {
 
     strftime(timestamp, len, "%FT%T%z", tm);
     return timestamp;
-}
-
-uint16_t setbits(uint16_t x, int p, int n, uint16_t y) {
-    uint16_t mask = (1 << n) - 1;
-    y &= mask;
-    y <<= p;
-    mask <<= p;
-    x &= ~mask;
-    x |= y;
-    return x;
 }

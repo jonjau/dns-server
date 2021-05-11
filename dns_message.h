@@ -1,26 +1,36 @@
+/**
+ * COMP30023 Project 2
+ * Author: Jonathan Jauhari 1038331
+ * 
+ * DNS message module containing functions for creating (partial DNS
+ * messages), parsing from bytes and interpreting them.
+ */
+
 #ifndef DNS_MESSAGE_H
 #define DNS_MESSAGE_H
 
 #include <stdint.h>
 #include <stdbool.h>
 
-#define QR_POS 15
-#define OPCODE_POS 14
-#define AA_POS 10
-#define TC_POS 9
-#define RD_POS 8
-#define RA_POS 7
-#define RCODE_POS 0
+#define QR_OFFSET 15
+#define OPCODE_OFFSET 14
+#define AA_OFFSET 10
+#define TC_OFFSET 9
+#define RD_OFFSET 8
+#define RA_OFFSET 7
+#define RCODE_OFFSET 0
 
 #define AAAA_RR_TYPE 28
 #define NOT_IMPLEMENTED_RCODE 4
 
+// Represents a 'question' in the questions section of a DNS message
 typedef struct {
     uint16_t qtype;
     uint16_t qclass;
     uint8_t *qname;
 } query_t;
 
+// Represents a 'resource record' in the answers section of a DNS message
 typedef struct {
     uint8_t *name;
     uint16_t type;
@@ -30,12 +40,17 @@ typedef struct {
     char *rdata;
 } record_t;
 
+// An array of bytes along with a stored offset to start reading from and
+// a size
 typedef struct {
     uint8_t *data;
     uint16_t size;
     uint16_t offset;
 } bytes_t;
 
+// Represents a (partial) DNS message. The 'Authority' and 'Additional'
+// sections are omitted. This structure also contains its representation in
+// bytes, in a `bytes_t`.
 typedef struct {
     uint16_t id;
     bool qr;

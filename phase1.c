@@ -1,3 +1,11 @@
+/**
+ * COMP30023 Project 2
+ * Author: Jonathan Jauhari 1038331
+ *
+ * Ungraded Phase 1: read raw binary packets from STDIN, parse them into a
+ * data structure and print appropriate logs to a file
+ */
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <getopt.h>
@@ -20,6 +28,8 @@ uint16_t read_msg_len(int fd);
 void log_query(FILE *fp, query_t *query);
 void log_answer(FILE *fp, record_t *answer);
 
+// Read binary DNS requests/responses (indicated by the message itself and the
+// supplied command line argument) and print logs to a file.
 int main(int argc, char *argv[]) {
     if (argc < 2) {
 		fprintf(stderr, "usage %s [query|response]\n", argv[0]);
