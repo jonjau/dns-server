@@ -149,16 +149,6 @@ void read_header(dns_message_t *msg) {
 
     uint16_t flags;
     read_field(&flags, bytes);
-    // // TODO: consider #define'ing
-    // msg->qr = (flags >> 15) & 1;        // leftmost bit is QR
-    // msg->opcode = (flags >> 11) & 0xF;  // next 4 bits is OPCODE
-    // msg->aa = (flags >> 10) & 1;        // then 1 bit for AA
-    // msg->tc = (flags >> 9) & 1;         // then 1 bit for TC
-    // msg->rd = (flags >> 8) & 1;         // then 1 bit for RD
-    // msg->ra = (flags >> 7) & 1;         // then 1 bit for RA
-    // // 3 bits of z is ignored
-    // msg->rcode = (flags >> 0) & 0xF;    // rightmost 4 bits is RCODE
-
     // 1bit QR, 4bits OPCODE, 1bit for each of AA, TC, RD, RA, then 4 bits
     // for RCODE.
     msg->qr = (flags & QR_MASK) >> QR_OFFSET;

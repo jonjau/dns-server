@@ -93,7 +93,10 @@ int main(int argc, char *argv[]) {
             // wait for reply then log and forward the response to the client
             msg_recv = read_dns_message(ups_sockfd);
             if (msg_recv->ancount > 0) {
-                log_answer(log_fp, &msg_recv->answers[0]);
+                // spec: if first answer is not AAAA, then do not log any
+                if (msg_recv->answers[0].type == AAAA_RR_TYPE) {
+                    log_answer(log_fp, &msg_recv->answers[0]);
+                }
             }
             write_dns_message(sockfd, msg_recv);
             free_dns_message(msg_recv);
