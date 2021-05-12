@@ -13,8 +13,8 @@
 
 #define TIMESTAMP_LEN 41  // maximum length based on ISO 8601 limits
 
-char *get_timestamp(char *timestamp, size_t len);
 size_t read_fully(int fd, uint8_t *buf, size_t nbytes);
 size_t write_fully(int fd, uint8_t *buf, size_t nbytes);
+char *get_timestamp(char *timestamp, size_t len);
 
 #endif

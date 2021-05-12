@@ -43,6 +43,10 @@ void log_answer(FILE *fp, record_t *answer);
 
 void handle_unimplemented(int sockfd, dns_message_t *msg);
 
+// FIXME: respond with RCODE 4 AND NOTHING ELSE, CONSIDER STARTING FROM
+// SCRATCH?
+// FIXME: LOG IS APPEND, THIS HAS NOT BEEN COMMITTED
+
 // Listens for DNS "AAAA" queries over TCP on a fixed port, forwarding the
 // requests and responses to/from an upstream server specified by hostname
 // and port given as two command line arguments. Logs this server's events
@@ -56,7 +60,7 @@ int main(int argc, char *argv[]) {
     char *ups_port = argv[2];
 
     // Open log file, creating it if it does not exist or overwriting
-    FILE *log_fp = fopen(LOG_FILE_PATH, "w");
+    FILE *log_fp = fopen(LOG_FILE_PATH, "a");
     if (!log_fp) {
         perror("open log file");
         exit(EXIT_FAILURE);

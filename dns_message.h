@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+// bit positions to shift left, used in setting these codes in the message
 #define QR_OFFSET 15
 #define OPCODE_OFFSET 14
 #define AA_OFFSET 10
@@ -20,7 +21,9 @@
 #define RA_OFFSET 7
 #define RCODE_OFFSET 0
 
+// resource record type designating AAAA or IPv6
 #define AAAA_RR_TYPE 28
+// response code designating functionality that is not implemented
 #define NOT_IMPLEMENTED_RCODE 4
 
 // Represents a 'question' in the questions section of a DNS message
@@ -50,7 +53,8 @@ typedef struct {
 
 // Represents a (partial) DNS message. The 'Authority' and 'Additional'
 // sections are omitted. This structure also contains its representation in
-// bytes, in a `bytes_t`.
+// bytes, in a `bytes_t`. The order of the fields is significant, as their
+// offset is used when setting certain fields by the DNS server implementation
 typedef struct {
     uint16_t id;
     bool qr;
