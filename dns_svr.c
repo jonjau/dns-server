@@ -124,7 +124,9 @@ void handle_unimplemented(int sockfd, dns_message_t *msg) {
         init_dns_message(msg->bytes->data, msg->bytes->size);
     uint16_t flags = get_flags(reply);
 
-    // Respond (QR=1) with RCODE = NOT_IMPLEMENTED
+    // Respond (QR=1) with RA = true, RCODE = NOT_IMPLEMENTED
+    reply->ra = true;
+    flags |= reply->ra << RA_OFFSET;
     reply->rcode = NOT_IMPLEMENTED_RCODE;
     flags |= reply->rcode << RCODE_OFFSET;
     reply->qr = true;
