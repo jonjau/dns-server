@@ -45,7 +45,7 @@ void handle_unimplemented(int sockfd, dns_message_t *msg);
 
 // FIXME: respond with RCODE 4 AND NOTHING ELSE, CONSIDER STARTING FROM
 // SCRATCH?
-// FIXME: LOG IS APPEND, THIS HAS NOT BEEN COMMITTED
+// TODO: malloc size problem???
 
 // Listens for DNS "AAAA" queries over TCP on a fixed port, forwarding the
 // requests and responses to/from an upstream server specified by hostname
@@ -68,7 +68,6 @@ int main(int argc, char *argv[]) {
 
     // setup a socket for listening, and another for forwarding to upstream
     int serv_sockfd = setup_server_socket(SERVER_PORT);
-    int ups_sockfd = setup_client_socket(ups, ups_port);
 
     // queue up to some number of connection requests
     if (listen(serv_sockfd, CONNECTION_QUEUE_SIZE) < 0) {
@@ -91,6 +90,8 @@ int main(int argc, char *argv[]) {
             log_unimplemented(log_fp);
             handle_unimplemented(sockfd, msg_send);
         } else {
+            int ups_sockfd = setup_client_socket(ups, ups_port);
+
             // forward client's request to upstream server
             write_dns_message(ups_sockfd, msg_send);
 
@@ -104,11 +105,12 @@ int main(int argc, char *argv[]) {
             }
             write_dns_message(sockfd, msg_recv);
             free_dns_message(msg_recv);
+            
+            close(ups_sockfd);
         }
         free_dns_message(msg_send);
         close(sockfd);
     }
-    close(ups_sockfd);
     close(serv_sockfd);
     fclose(log_fp);
 
