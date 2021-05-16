@@ -27,7 +27,7 @@
 
 #define CACHE
 
-#define CACHE_CAPACITY 5
+#define CACHE_CAPACITY 2
 
 // maximum number of connection requests to be queued up
 #define CONNECTION_QUEUE_SIZE 5
@@ -107,6 +107,13 @@ int main(int argc, char *argv[]) {
             if (cached) {
                 log_cached(log_fp, cached);
                 msg_recv = get_cached(msg_send, cached);
+                if (msg_recv->ancount > 0) {
+                    record_t first_record = msg_recv->answers[0];
+                    // spec: if first answer is not AAAA, then do not log any
+                    if (first_record.type == AAAA_RR_TYPE) {
+                        log_answer(log_fp, &first_record);
+                    }
+                }
                 free_cache_entry(cached);
             } else {
                 int ups_sockfd = setup_client_socket(ups, ups_port);
@@ -114,28 +121,32 @@ int main(int argc, char *argv[]) {
                 // forward client's request to upstream server
                 write_dns_message(ups_sockfd, msg_send);
 
-                // wait for reply then log and forward the response to the client
+                // wait for reply then log and forward the response to the
+                // client
                 msg_recv = read_dns_message(ups_sockfd);
+
+                if (msg_recv->ancount > 0) {
+                    record_t first_record = msg_recv->answers[0];
+
+                    // spec: if first answer is not AAAA, then do not log any
+                    if (first_record.type == AAAA_RR_TYPE) {
+                        log_answer(log_fp, &first_record);
+
+                        cache_entry_t *evicted =
+                            cache_put(cache, &first_record);
+                        cache_entry_t *cached =
+                            cache_get(cache, (char *)first_record.name);
+                        if (evicted) {
+                            log_evicted(log_fp, cached, evicted);
+                            free_cache_entry(evicted);
+                        }
+                        free_cache_entry(cached);
+                    }
+                }
 
                 close(ups_sockfd);
             }
-            if (msg_recv->ancount > 0) {
-                record_t first_record = msg_recv->answers[0];
 
-                // spec: if first answer is not AAAA, then do not log any
-                if (first_record.type == AAAA_RR_TYPE) {
-                    log_answer(log_fp, &first_record);
-
-                    cache_entry_t *evicted = cache_put(cache, &first_record);
-                    cache_entry_t *cached =
-                        cache_get(cache, (char *)first_record.name);
-                    if (evicted) {
-                        log_evicted(log_fp, cached, evicted);
-                        free_cache_entry(evicted);
-                    }
-                    free_cache_entry(cached);
-                }
-            }
             write_dns_message(sockfd, msg_recv);
             free_dns_message(msg_recv);
         }
@@ -188,7 +199,6 @@ void write32(bytes_t *bytes, uint32_t field) {
 }
 
 dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached) {
-
     // TODO: change id, ttl, ancount, bytes length
 
     size_t offset0 = msg->bytes->offset;
@@ -213,7 +223,8 @@ dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached) {
     write_field(bytes, msg->arcount);
 
     uint16_t qlen = offset0 - bytes->offset;
-    memcpy(bytes->data + bytes->offset, msg->bytes->data + bytes->offset, qlen);
+    memcpy(bytes->data + bytes->offset, msg->bytes->data + bytes->offset,
+           qlen);
     bytes->offset += qlen;
 
     record_t *record = cached->record;
@@ -225,7 +236,7 @@ dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached) {
     write_field(bytes, rdlen);
 
     // unsigned char buf[sizeof(struct in6_addr)];
-    
+
     // char test[50];
     // const char *a = (const char *)record->rdata;
     // int s = inet_pton(AF_INET6, a, buf);
@@ -241,7 +252,8 @@ dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached) {
     // uint8_t *asdad = bytes->data + bytes->offset;
 
     uint16_t rest_len = msg->bytes->size - msg->bytes->offset;
-    memcpy(bytes->data + bytes->offset, msg->bytes->data + msg->bytes->offset, rest_len);
+    memcpy(bytes->data + bytes->offset,
+           msg->bytes->data + msg->bytes->offset, rest_len);
 
     dns_message_t *reply = init_dns_message(bytes->data, bytes->size);
 

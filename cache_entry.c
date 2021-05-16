@@ -10,7 +10,7 @@ cache_entry_t *new_cache_entry(record_t *record, time_t cached_time) {
     record_t *new_record = malloc(sizeof(*new_record));
     assert(entry && new_record);
 
-    new_record->name = malloc(strlen((char *)record->name));
+    new_record->name = malloc(strlen((char *)record->name) + 1);
     strcpy((char *)new_record->name, (char *)record->name);
 
     new_record->type = record->type;
@@ -18,8 +18,8 @@ cache_entry_t *new_cache_entry(record_t *record, time_t cached_time) {
     new_record->ttl = record->ttl;
     new_record->rdlen = record->rdlen;
 
-    new_record->rdata = malloc(record->rdlen * sizeof(*new_record->rdata));
-    memcpy(new_record->rdata, record->rdata, new_record->rdlen);
+    new_record->rdata = malloc(strlen(record->rdata) + 1);
+    strcpy(new_record->rdata, record->rdata);
 
     entry->record = new_record;
     entry->cached_time = cached_time;

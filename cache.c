@@ -67,11 +67,13 @@ cache_entry_t *cache_put(cache_t *cache, record_t *record) {
     cache_entry_t *to_evict = cache_find(cache, (char *)record->name);
     if (to_evict && cache_entry_is_expired(to_evict)) {
         list_remove(cache->entries, to_evict);
+        list_add_end(cache->entries, new_entry);
         return to_evict;
     }
     if (cache_is_full(cache)) {
         cache_entry_t *to_evict = list_min(cache->entries, cache_entry_cmp);
         list_remove(cache->entries, to_evict);
+        list_add_end(cache->entries, new_entry);
         return to_evict;
     }
     list_add_end(cache->entries, new_entry);
