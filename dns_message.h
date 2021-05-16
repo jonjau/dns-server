@@ -14,7 +14,7 @@
 
 // bit positions to shift left, used in setting these codes in the message
 #define QR_OFFSET 15
-#define OPCODE_OFFSET 14
+#define OPCODE_OFFSET 11
 #define AA_OFFSET 10
 #define TC_OFFSET 9
 #define RD_OFFSET 8

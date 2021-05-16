@@ -20,8 +20,14 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "cache.h"
+#include "cache_entry.h"
 #include "dns_message.h"
 #include "util.h"
+
+#define CACHE
+
+#define CACHE_CAPACITY 5
 
 // maximum number of connection requests to be queued up
 #define CONNECTION_QUEUE_SIZE 5
@@ -41,7 +47,11 @@ void log_query(FILE *fp, query_t *query);
 void log_unimplemented(FILE *fp);
 void log_answer(FILE *fp, record_t *answer);
 
+void log_cached(FILE *fp, cache_entry_t *entry);
+void log_evicted(FILE *fp, cache_entry_t *entry, cache_entry_t *evicted);
+
 void handle_unimplemented(int sockfd, dns_message_t *msg);
+void handle_cached(int sockfd, dns_message_t *msg, cache_entry_t *cached);
 
 // FIXME: respond with RCODE 4 AND NOTHING ELSE, CONSIDER STARTING FROM
 // SCRATCH?
@@ -58,6 +68,8 @@ int main(int argc, char *argv[]) {
     }
     char *ups = argv[1];
     char *ups_port = argv[2];
+
+    cache_t *cache = new_cache(CACHE_CAPACITY);
 
     // Open log file, creating it if it does not exist or overwriting
     FILE *log_fp = fopen(LOG_FILE_PATH, "a");
@@ -90,6 +102,15 @@ int main(int argc, char *argv[]) {
             log_unimplemented(log_fp);
             handle_unimplemented(sockfd, msg_send);
         } else {
+            char *qname = (char *)msg_send->queries[0].qname;
+            cache_entry_t *cached = cache_get(cache, (char *)qname);
+            if (cached) {
+                log_cached(log_fp, cached);
+                handle_cached(sockfd, msg_send, cached);
+                free_cache_entry(cached);
+                continue;
+            }
+
             int ups_sockfd = setup_client_socket(ups, ups_port);
 
             // forward client's request to upstream server
@@ -98,14 +119,25 @@ int main(int argc, char *argv[]) {
             // wait for reply then log and forward the response to the client
             msg_recv = read_dns_message(ups_sockfd);
             if (msg_recv->ancount > 0) {
+                record_t first_record = msg_recv->answers[0];
+
                 // spec: if first answer is not AAAA, then do not log any
-                if (msg_recv->answers[0].type == AAAA_RR_TYPE) {
-                    log_answer(log_fp, &msg_recv->answers[0]);
+                if (first_record.type == AAAA_RR_TYPE) {
+                    log_answer(log_fp, &first_record);
+
+                    cache_entry_t *evicted = cache_put(cache, &first_record);
+                    cache_entry_t *cached =
+                        cache_get(cache, (char *)first_record.name);
+                    if (evicted) {
+                        log_evicted(log_fp, cached, evicted);
+                        free_cache_entry(evicted);
+                    }
+                    free_cache_entry(cached);
                 }
             }
             write_dns_message(sockfd, msg_recv);
             free_dns_message(msg_recv);
-            
+
             close(ups_sockfd);
         }
         free_dns_message(msg_send);
@@ -113,12 +145,13 @@ int main(int argc, char *argv[]) {
     }
     close(serv_sockfd);
     fclose(log_fp);
+    free_cache(cache);
 
     return 0;
 }
 
 // Given an accepted socket `sockfd`, and a message `msg` that contains a
-// non-AAAA query, write back a to the client, responding with RCODE
+// non-AAAA query, write back a message to the client, responding with RCODE
 // NOT_IMPLEMENTED, deep copying the request `msg` to form a reply. Exits if
 // error.
 void handle_unimplemented(int sockfd, dns_message_t *msg) {
@@ -139,6 +172,73 @@ void handle_unimplemented(int sockfd, dns_message_t *msg) {
     uint16_t offset = offsetof(dns_message_t, qr);
     memcpy(reply->bytes->data + offset, &flags, sizeof(flags));
 
+    write_dns_message(sockfd, reply);
+    free_dns_message(reply);
+}
+
+void write_field(bytes_t *bytes, uint16_t field) {
+    uint16_t field_val = htons(field);
+    memcpy(bytes->data + bytes->offset, &field_val, sizeof(field));
+    bytes->offset += sizeof(field);
+}
+
+void write32(bytes_t *bytes, uint32_t field) {
+    uint32_t field_val = htonl(field);
+    memcpy(bytes->data + bytes->offset, &field_val, sizeof(field));
+    bytes->offset += sizeof(field);
+}
+
+void handle_cached(int sockfd, dns_message_t *msg, cache_entry_t *cached) {
+
+    // TODO: change id, ttl, ancount, bytes length
+
+    size_t offset0 = msg->bytes->offset;
+
+    bytes_t *bytes = malloc(sizeof(*bytes));
+    uint16_t new_size = msg->bytes->size + 28;
+    uint8_t *data = malloc(new_size);
+    bytes->data = data;
+    bytes->offset = 0;
+    bytes->size = new_size;
+
+    write_field(bytes, msg->id + 1);
+
+    uint16_t flags = get_flags(msg);
+    flags |= true << RA_OFFSET;
+    flags |= true << QR_OFFSET;
+    write_field(bytes, flags);
+
+    write_field(bytes, msg->qdcount);
+    write_field(bytes, 1);
+    write_field(bytes, msg->nscount);
+    write_field(bytes, msg->arcount);
+
+    uint16_t qlen = offset0 - bytes->offset;
+    memcpy(bytes->data + bytes->offset, msg->bytes->data + bytes->offset, qlen);
+    bytes->offset += qlen;
+    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
+
+    record_t *record = cached->record;
+    write_field(bytes, 0xc00c);
+    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
+    write_field(bytes, record->type);
+    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
+    write_field(bytes, record->class);
+    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
+    write32(bytes, record->ttl);
+    uint16_t rdlen = sizeof(struct in6_addr);
+    write_field(bytes, rdlen);
+    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
+    inet_pton(AF_INET6, (char *)record->name, bytes->data + bytes->offset);
+    bytes->offset += rdlen;
+    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
+
+    uint16_t rest_len = msg->bytes->size - msg->bytes->offset;
+    memcpy(bytes->data + bytes->offset, msg->bytes->data + msg->bytes->offset, rest_len);
+
+    dns_message_t *reply = init_dns_message(bytes->data, bytes->size);
+
+    free(bytes);
     write_dns_message(sockfd, reply);
     free_dns_message(reply);
 }
@@ -303,5 +403,26 @@ void log_answer(FILE *fp, record_t *answer) {
     get_timestamp(timestamp, TIMESTAMP_LEN);
 
     fprintf(fp, "%s %s is at %s\n", timestamp, answer->name, answer->rdata);
+    fflush(fp);
+}
+
+void log_cached(FILE *fp, cache_entry_t *entry) {
+    char timestamp[TIMESTAMP_LEN];
+    get_timestamp(timestamp, TIMESTAMP_LEN);
+
+    char expiry[TIMESTAMP_LEN];
+    cache_entry_get_expiry(entry, expiry, TIMESTAMP_LEN);
+
+    fprintf(fp, "%s %s expires at %s\n", timestamp, entry->record->name,
+            expiry);
+    fflush(fp);
+}
+
+void log_evicted(FILE *fp, cache_entry_t *entry, cache_entry_t *evicted) {
+    char timestamp[TIMESTAMP_LEN];
+    get_timestamp(timestamp, TIMESTAMP_LEN);
+
+    fprintf(fp, "%s replacing %s by %s\n", timestamp, evicted->record->name,
+            entry->record->name);
     fflush(fp);
 }

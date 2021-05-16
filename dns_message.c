@@ -23,10 +23,6 @@
 #define RA_MASK (1 << RA_OFFSET)
 #define RCODE_MASK (0xF << RCODE_OFFSET)
 
-// bit positions to shift right, used in reading these codes in the message
-#define OPCODE_LOFFSET 11
-#define RCODE_LOFFSET 0
-
 uint16_t read_field(uint16_t *field, bytes_t *bytes);
 uint8_t read_octet(uint8_t *octet, bytes_t *bytes);
 
@@ -152,13 +148,13 @@ void read_header(dns_message_t *msg) {
     // 1bit QR, 4bits OPCODE, 1bit for each of AA, TC, RD, RA, then 4 bits
     // for RCODE.
     msg->qr = (flags & QR_MASK) >> QR_OFFSET;
-    msg->opcode = (flags & OPCODE_MASK) >> OPCODE_LOFFSET;
+    msg->opcode = (flags & OPCODE_MASK) >> OPCODE_OFFSET;
     msg->aa = (flags & AA_MASK) >> AA_OFFSET;     
     msg->tc = (flags & TC_MASK) >> TC_OFFSET;     
     msg->rd = (flags & RD_MASK) >> RD_OFFSET;     
     msg->ra = (flags & RA_MASK) >> RA_OFFSET;         
     // 3 bits of z is ignored
-    msg->rcode = (flags >> RCODE_MASK) >> RCODE_LOFFSET;
+    msg->rcode = (flags & RCODE_MASK) >> RCODE_OFFSET;
 
     read_field(&msg->qdcount, bytes);
     read_field(&msg->ancount, bytes);
