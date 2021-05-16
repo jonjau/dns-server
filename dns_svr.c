@@ -27,7 +27,7 @@
 
 #define CACHE
 
-#define CACHE_CAPACITY 2
+#define CACHE_CAPACITY 5
 
 // maximum number of connection requests to be queued up
 #define CONNECTION_QUEUE_SIZE 5
@@ -132,15 +132,17 @@ int main(int argc, char *argv[]) {
                     if (first_record.type == AAAA_RR_TYPE) {
                         log_answer(log_fp, &first_record);
 
-                        cache_entry_t *evicted =
-                            cache_put(cache, &first_record);
-                        cache_entry_t *cached =
-                            cache_get(cache, (char *)first_record.name);
-                        if (evicted) {
-                            log_evicted(log_fp, cached, evicted);
-                            free_cache_entry(evicted);
+                        if (first_record.ttl != 0) {
+                            cache_entry_t *evicted =
+                                cache_put(cache, &first_record);
+                            cache_entry_t *cached =
+                                cache_get(cache, (char *)first_record.name);
+                            if (evicted) {
+                                log_evicted(log_fp, cached, evicted);
+                                free_cache_entry(evicted);
+                            }
+                            free_cache_entry(cached);
                         }
-                        free_cache_entry(cached);
                     }
                 }
 
@@ -257,6 +259,7 @@ dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached) {
 
     dns_message_t *reply = init_dns_message(bytes->data, bytes->size);
 
+    free(bytes->data);
     free(bytes);
     return reply;
 }

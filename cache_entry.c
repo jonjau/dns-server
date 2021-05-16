@@ -35,14 +35,14 @@ void free_cache_entry(cache_entry_t *cache_entry) {
 }
 
 bool cache_entry_is_expired(cache_entry_t *cache_entry) {
-    time_t curr_time = time(NULL);
-    double diff = difftime(curr_time, cache_entry->cached_time);
-    return diff > cache_entry->record->ttl;
+    // time_t curr_time = time(NULL);
+    // double diff = difftime(curr_time, cache_entry->cached_time);
+    return cache_entry->record->ttl == 0;
 }
 
 char *cache_entry_get_expiry(cache_entry_t *cache_entry, char *timestamp, size_t len) {
-    time_t cached = cache_entry->cached_time;
-    time_t expiry = cached + cache_entry->record->ttl;
+    time_t curr_time = time(NULL);
+    time_t expiry = curr_time + cache_entry->record->ttl;
     struct tm *tm= gmtime(&expiry);
 
     strftime(timestamp, len, "%FT%T%z", tm);

@@ -20,6 +20,11 @@ cache_t *new_cache(size_t capacity) {
 }
 
 void free_cache(cache_t *cache) {
+    node_t *curr = cache->entries->head;
+    while (curr) {
+        free_cache_entry(curr->data);
+        curr = curr->next;
+    }
     free_list(cache->entries);
     free(cache);
 }
@@ -28,14 +33,16 @@ cache_entry_t *cache_get(cache_t *cache, char *name) {
     cache_entry_t *entry = cache_find(cache, name);
     if (entry && !cache_entry_is_expired(entry)) {
         time_t curr_time = time(NULL);
-        uint32_t diff = (int)difftime(curr_time, entry->cached_time);
-        uint32_t new_ttl = entry->record->ttl - diff;
+        int diff = (int)difftime(curr_time, entry->cached_time);
         cache_entry_t *new_entry =
             new_cache_entry(entry->record, entry->cached_time);
-        new_entry->record->ttl = new_ttl;
+        if (diff < 0) {
+            new_entry->record->ttl = 0;
+        } else {
+            new_entry->record->ttl = entry->record->ttl - diff;
+        }
         return new_entry;
     }
-    // FIXME: change ID of reply in dns_svr, update ttl
     return NULL;
 }
 
