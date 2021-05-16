@@ -51,7 +51,7 @@ void log_cached(FILE *fp, cache_entry_t *entry);
 void log_evicted(FILE *fp, cache_entry_t *entry, cache_entry_t *evicted);
 
 void handle_unimplemented(int sockfd, dns_message_t *msg);
-void handle_cached(int sockfd, dns_message_t *msg, cache_entry_t *cached);
+dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached);
 
 // FIXME: respond with RCODE 4 AND NOTHING ELSE, CONSIDER STARTING FROM
 // SCRATCH?
@@ -106,18 +106,19 @@ int main(int argc, char *argv[]) {
             cache_entry_t *cached = cache_get(cache, (char *)qname);
             if (cached) {
                 log_cached(log_fp, cached);
-                handle_cached(sockfd, msg_send, cached);
+                msg_recv = get_cached(msg_send, cached);
                 free_cache_entry(cached);
-                continue;
+            } else {
+                int ups_sockfd = setup_client_socket(ups, ups_port);
+
+                // forward client's request to upstream server
+                write_dns_message(ups_sockfd, msg_send);
+
+                // wait for reply then log and forward the response to the client
+                msg_recv = read_dns_message(ups_sockfd);
+
+                close(ups_sockfd);
             }
-
-            int ups_sockfd = setup_client_socket(ups, ups_port);
-
-            // forward client's request to upstream server
-            write_dns_message(ups_sockfd, msg_send);
-
-            // wait for reply then log and forward the response to the client
-            msg_recv = read_dns_message(ups_sockfd);
             if (msg_recv->ancount > 0) {
                 record_t first_record = msg_recv->answers[0];
 
@@ -137,8 +138,6 @@ int main(int argc, char *argv[]) {
             }
             write_dns_message(sockfd, msg_recv);
             free_dns_message(msg_recv);
-
-            close(ups_sockfd);
         }
         free_dns_message(msg_send);
         close(sockfd);
@@ -188,7 +187,7 @@ void write32(bytes_t *bytes, uint32_t field) {
     bytes->offset += sizeof(field);
 }
 
-void handle_cached(int sockfd, dns_message_t *msg, cache_entry_t *cached) {
+dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached) {
 
     // TODO: change id, ttl, ancount, bytes length
 
@@ -201,7 +200,7 @@ void handle_cached(int sockfd, dns_message_t *msg, cache_entry_t *cached) {
     bytes->offset = 0;
     bytes->size = new_size;
 
-    write_field(bytes, msg->id + 1);
+    write_field(bytes, msg->id);
 
     uint16_t flags = get_flags(msg);
     flags |= true << RA_OFFSET;
@@ -216,22 +215,30 @@ void handle_cached(int sockfd, dns_message_t *msg, cache_entry_t *cached) {
     uint16_t qlen = offset0 - bytes->offset;
     memcpy(bytes->data + bytes->offset, msg->bytes->data + bytes->offset, qlen);
     bytes->offset += qlen;
-    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
 
     record_t *record = cached->record;
     write_field(bytes, 0xc00c);
-    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
     write_field(bytes, record->type);
-    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
     write_field(bytes, record->class);
-    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
     write32(bytes, record->ttl);
     uint16_t rdlen = sizeof(struct in6_addr);
     write_field(bytes, rdlen);
-    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
-    inet_pton(AF_INET6, (char *)record->name, bytes->data + bytes->offset);
+
+    // unsigned char buf[sizeof(struct in6_addr)];
+    
+    // char test[50];
+    // const char *a = (const char *)record->rdata;
+    // int s = inet_pton(AF_INET6, a, buf);
+    // inet_ntop(AF_INET6, buf, test, 50);
+
+    // const char *b = "1:0:0:0:0:0:0:8";
+    // s = inet_pton(AF_INET6, b, buf);
+    // inet_ntop(AF_INET6, buf, test, 50);
+
+    // uint8_t *asdasd = bytes->data + bytes->offset;
+    inet_pton(AF_INET6, record->rdata, bytes->data + bytes->offset);
     bytes->offset += rdlen;
-    printf("%x%x\n",bytes->data[bytes->offset-2], bytes->data[bytes->offset-1]);
+    // uint8_t *asdad = bytes->data + bytes->offset;
 
     uint16_t rest_len = msg->bytes->size - msg->bytes->offset;
     memcpy(bytes->data + bytes->offset, msg->bytes->data + msg->bytes->offset, rest_len);
@@ -239,8 +246,7 @@ void handle_cached(int sockfd, dns_message_t *msg, cache_entry_t *cached) {
     dns_message_t *reply = init_dns_message(bytes->data, bytes->size);
 
     free(bytes);
-    write_dns_message(sockfd, reply);
-    free_dns_message(reply);
+    return reply;
 }
 
 // This function contains code from Lab 9 solutions. Creates and returns a
