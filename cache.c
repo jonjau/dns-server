@@ -32,16 +32,20 @@ void free_cache(cache_t *cache) {
 cache_entry_t *cache_get(cache_t *cache, char *name) {
     cache_entry_t *entry = cache_find(cache, name);
     if (entry && !cache_entry_is_expired(entry)) {
-        time_t curr_time = time(NULL);
-        int diff = (int)difftime(curr_time, entry->cached_time);
         cache_entry_t *new_entry =
             new_cache_entry(entry->record, entry->cached_time);
-        if (diff < 0) {
+        time_t curr_time = time(NULL);
+        int diff = (int)difftime(curr_time, entry->cached_time);
+        if (diff > entry->record->ttl) {
             new_entry->record->ttl = 0;
         } else {
             new_entry->record->ttl = entry->record->ttl - diff;
         }
-        return new_entry;
+        if (!cache_entry_is_expired(new_entry)) {
+            return new_entry;
+        } else {
+            return NULL;
+        }
     }
     return NULL;
 }
