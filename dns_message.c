@@ -23,11 +23,33 @@
 #define RA_MASK (1 << RA_OFFSET)
 #define RCODE_MASK (0xF << RCODE_OFFSET)
 
-uint16_t read_field(uint16_t *field, bytes_t *bytes);
-uint8_t read_octet(uint8_t *octet, bytes_t *bytes);
+// bitmask representing the bits to be cleared when reading the name offset
+// in the answers section (16-bits, two leftmost bits one)
+#define NAME_OFFSET_MASK ((1 << 15) | (1 << 14))
+
+// bit positions to shift left, used in setting these codes in the message
+#define QR_OFFSET 15
+#define OPCODE_OFFSET 11
+#define AA_OFFSET 10
+#define TC_OFFSET 9
+#define RD_OFFSET 8
+#define RA_OFFSET 7
+#define RCODE_OFFSET 0
+
+// the number of bytes in the answer section if responding from cache,
+// relies on the assumption of only IPv6 answers in the cache, and that only
+// one answer is in the response
+#define ANSWER_SIZE 28
+
+// the number of bytes in the header of a DNS message
+#define HEADER_SIZE 12
+// response code designating functionality that is not implemented
+#define NOT_IMPLEMENTED_RCODE 4
 
 uint8_t *read_domain(uint8_t *domain, bytes_t *bytes);
 char *read_ip_addr(char *addr, uint16_t rdlen, bytes_t *bytes);
+
+uint16_t get_flags(dns_message_t *msg);
 
 void read_header(dns_message_t *msg);
 void read_queries(dns_message_t *msg);
@@ -38,15 +60,9 @@ void read_answers(dns_message_t *msg);
 // are not allocated, (they will be allocated at initialisation).
 dns_message_t *new_dns_message(uint16_t nbytes) {
     dns_message_t *msg = malloc(sizeof(*msg));
-    bytes_t *bytes = malloc(sizeof(*bytes));
-    uint8_t *data = malloc(nbytes * sizeof(*data));
-    assert(msg && bytes && data);
+    assert(msg);
 
-    bytes->data = data;
-    bytes->size = nbytes;
-    bytes->offset = 0;
-
-    msg->bytes = bytes;
+    msg->bytes = new_bytes(nbytes);
     msg->queries = NULL;
     msg->answers = NULL;
 
@@ -59,8 +75,6 @@ dns_message_t *new_dns_message(uint16_t nbytes) {
 dns_message_t *init_dns_message(uint8_t *data, uint16_t nbytes) {
     dns_message_t *msg = new_dns_message(nbytes);
     memcpy(msg->bytes->data, data, nbytes);
-    msg->bytes->size = nbytes;
-    msg->bytes->offset = 0;
 
     read_header(msg);
     read_queries(msg);
@@ -71,8 +85,7 @@ dns_message_t *init_dns_message(uint8_t *data, uint16_t nbytes) {
 
 // Frees a dns_message: make sure it was initialised before calling this.
 void free_dns_message(dns_message_t *msg) {
-    free(msg->bytes->data);
-    free(msg->bytes);
+    free_bytes(msg->bytes);
 
     for (size_t i = 0; i < msg->qdcount; i++) {
         free(msg->queries[i].qname);
@@ -88,23 +101,6 @@ void free_dns_message(dns_message_t *msg) {
     free(msg);
 }
 
-// Copies two octets from `bytes` to `field`, keeping track of the offset
-// and returns the integer value in host byte order.
-uint16_t read_field(uint16_t *field, bytes_t *bytes) {
-    memcpy(field, bytes->data + bytes->offset, sizeof(*field));
-    bytes->offset += sizeof(*field);
-    *field = ntohs(*field);
-    return *field;
-}
-
-// Copies an octet from `bytes` to `field`, keeping track of the offset and
-// returns the integer value of the octet read.
-uint8_t read_octet(uint8_t *octet, bytes_t *bytes) {
-    memcpy(octet, bytes->data + bytes->offset, sizeof(*octet));
-    bytes->offset += sizeof(*octet);
-    return *octet;
-}
-
 // Read a domain (a sequence of labels separated by '.') from `bytes` into a
 // null-terminated array of octets `domain` which can be treated as a string,
 // since we are allowed to assume domain names are ASCII only. Returns a
@@ -112,11 +108,11 @@ uint8_t read_octet(uint8_t *octet, bytes_t *bytes) {
 uint8_t *read_domain(uint8_t *domain, bytes_t *bytes) {
     uint8_t octet;
     uint8_t label_size = 0;
-    while ((label_size = read_octet(&octet, bytes)) != 0) {
+    while ((label_size = read8(&octet, bytes)) != 0) {
         int i;
         uint8_t label[label_size + 1];
         for (i = 0; i < label_size; i++) {
-            label[i] = read_octet(&octet, bytes);
+            label[i] = read8(&octet, bytes);
         }
         label[label_size] = '\0';
 
@@ -141,10 +137,10 @@ char *read_ip_addr(char *addr, uint16_t rdlen, bytes_t *bytes) {
 void read_header(dns_message_t *msg) {
     bytes_t *bytes = msg->bytes;
 
-    read_field(&msg->id, bytes);
+    read16(&msg->id, bytes);
 
     uint16_t flags;
-    read_field(&flags, bytes);
+    read16(&flags, bytes);
     // 1bit QR, 4bits OPCODE, 1bit for each of AA, TC, RD, RA, then 4 bits
     // for RCODE.
     msg->qr = (flags & QR_MASK) >> QR_OFFSET;
@@ -156,10 +152,10 @@ void read_header(dns_message_t *msg) {
     // 3 bits of z is ignored
     msg->rcode = (flags & RCODE_MASK) >> RCODE_OFFSET;
 
-    read_field(&msg->qdcount, bytes);
-    read_field(&msg->ancount, bytes);
-    read_field(&msg->nscount, bytes);
-    read_field(&msg->arcount, bytes);
+    read16(&msg->qdcount, bytes);
+    read16(&msg->ancount, bytes);
+    read16(&msg->nscount, bytes);
+    read16(&msg->arcount, bytes);
 }
 
 // Set the queries field in `msg`, based on the bytes array that it contains.
@@ -176,8 +172,8 @@ void read_queries(dns_message_t *msg) {
         *query.qname = '\0';
 
         read_domain(query.qname, bytes);
-        read_field(&query.qtype, bytes);
-        read_field(&query.qclass, bytes);
+        read16(&query.qtype, bytes);
+        read16(&query.qclass, bytes);
 
         queries[i] = query;
     }
@@ -194,13 +190,13 @@ void read_answers(dns_message_t *msg) {
     for (size_t i = 0; i < msg->ancount; i++) {
         record_t answer;
         uint16_t name_offset = 0;
-        read_field(&name_offset, bytes);
+        read16(&name_offset, bytes);
 
         // check that first (leftmost) two bits in 16-bit field are 0b11.
-        assert(((name_offset >> 14) ^ 0x3) == 0);
+        assert(((name_offset & NAME_OFFSET_MASK) ^ NAME_OFFSET_MASK) == 0);
 
         // clear first two bits (16th and 15th), this is the offset needed
-        name_offset &= ~((1 << 15) | (1 << 14));
+        name_offset &= ~NAME_OFFSET_MASK;
 
         // save the old offset before temporarily setting the name offset
         // to read the domain name, then resetting back to the old offset.
@@ -212,16 +208,11 @@ void read_answers(dns_message_t *msg) {
         read_domain(answer.name, bytes);
         bytes->offset = old_offset;
 
-        read_field(&answer.type, bytes);
-        read_field(&answer.class, bytes);
+        read16(&answer.type, bytes);
+        read16(&answer.class, bytes);
+        read32(&answer.ttl, bytes);
 
-        // read 2 16-bit pieces and get the 32-bit TTL
-        uint16_t field1, field2;
-        read_field(&field1, bytes);
-        read_field(&field2, bytes);
-        answer.ttl = field1 << 0x10 | field2;
-
-        read_field(&answer.rdlen, bytes);
+        read16(&answer.rdlen, bytes);
 
         char *addr = malloc(INET6_ADDRSTRLEN);
         assert(addr);
@@ -245,4 +236,81 @@ uint16_t get_flags(dns_message_t *msg) {
     flags |= msg->ra << RA_OFFSET;
     flags |= msg->rcode << RCODE_OFFSET;
     return flags;
+}
+
+// Given a message `msg` that contains ONLY ONE non-AAAA query AND NO
+// ANSWERS, return a message to be sent back a message to the client,
+// responding with RCODE NOT_IMPLEMENTED, deep copying the request `msg` to
+// form a reply. Exits if error.
+dns_message_t *new_unimplemented_message(dns_message_t *msg) {
+    bytes_t *bytes = new_bytes(msg->bytes->size);
+    write16(bytes, msg->id);
+
+    // Respond (QR=1) with RA = true, RCODE = NOT_IMPLEMENTED
+    uint16_t flags = get_flags(msg);
+    flags |= true << RA_OFFSET;
+    flags |= NOT_IMPLEMENTED_RCODE << RCODE_OFFSET;
+    flags |= true << QR_OFFSET;
+    write16(bytes, flags);
+
+    // copy all the questions
+    uint16_t qlen = msg->bytes->offset - bytes->offset;
+    memcpy(bytes->data + bytes->offset, msg->bytes->data + bytes->offset,
+           qlen);
+    bytes->offset += qlen;
+
+    // copy additional records if any
+    uint16_t rest_len = msg->bytes->size - msg->bytes->offset;
+    memcpy(bytes->data + bytes->offset,
+           msg->bytes->data + msg->bytes->offset, rest_len);
+
+    dns_message_t *reply = init_dns_message(bytes->data, bytes->size);
+    free_bytes(bytes);
+    return reply;
+}
+
+// Given a message `msg` that contains ONLY ONE AAAA query AND NO ANSWERS,
+// return a message to be sent back a message to the client, responding with
+// the record in `cached` as the only answer, deep copying the request `msg`
+// to form a reply. Exits if error.
+dns_message_t *new_response_message(dns_message_t *msg, record_t *record) {
+    bytes_t *bytes = new_bytes(msg->bytes->size + ANSWER_SIZE);
+    write16(bytes, msg->id);
+
+    // Respond (QR=1) with RA = true
+    uint16_t flags = get_flags(msg);
+    flags |= true << RA_OFFSET;
+    flags |= true << QR_OFFSET;
+    write16(bytes, flags);
+
+    write16(bytes, msg->qdcount);
+    write16(bytes, 1);  // one answer in the reply
+    write16(bytes, msg->nscount);
+    write16(bytes, msg->arcount);
+
+    // copy all the questions
+    uint16_t qlen = msg->bytes->offset - bytes->offset;
+    memcpy(bytes->data + bytes->offset, msg->bytes->data + bytes->offset,
+           qlen);
+    bytes->offset += qlen;
+
+    // name offset field is fixed, based on assumptions
+    write16(bytes, (NAME_OFFSET_MASK | HEADER_SIZE));
+    write16(bytes, record->type);
+    write16(bytes, record->class);
+    write32(bytes, record->ttl);
+
+    uint16_t rdlen = sizeof(struct in6_addr);
+    write16(bytes, rdlen);
+    inet_pton(AF_INET6, record->rdata, bytes->data + bytes->offset);
+    bytes->offset += rdlen;
+
+    // copy additional records if any
+    uint16_t rest_len = msg->bytes->size - msg->bytes->offset;
+    memcpy(bytes->data + bytes->offset,
+           msg->bytes->data + msg->bytes->offset, rest_len);
+
+    dns_message_t *reply = init_dns_message(bytes->data, bytes->size);
+    free_bytes(bytes);
+    return reply;
 }

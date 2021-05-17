@@ -12,19 +12,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// bit positions to shift left, used in setting these codes in the message
-#define QR_OFFSET 15
-#define OPCODE_OFFSET 11
-#define AA_OFFSET 10
-#define TC_OFFSET 9
-#define RD_OFFSET 8
-#define RA_OFFSET 7
-#define RCODE_OFFSET 0
+#include "bytes.h"
 
 // resource record type designating AAAA or IPv6
 #define AAAA_RR_TYPE 28
-// response code designating functionality that is not implemented
-#define NOT_IMPLEMENTED_RCODE 4
 
 // Represents a 'question' in the questions section of a DNS message
 typedef struct {
@@ -42,14 +33,6 @@ typedef struct {
     uint16_t rdlen;
     char *rdata;
 } record_t;
-
-// An array of bytes along with a stored offset to start reading from and
-// a size
-typedef struct {
-    uint8_t *data;
-    uint16_t size;
-    uint16_t offset;
-} bytes_t;
 
 // Represents a (partial) DNS message. The 'Authority' and 'Additional'
 // sections are omitted. This structure also contains its representation in
@@ -75,8 +58,10 @@ typedef struct {
 
 dns_message_t *new_dns_message(uint16_t nbytes);
 dns_message_t *init_dns_message(uint8_t *data,  uint16_t nbytes);
-uint16_t get_flags(dns_message_t *msg);
 
 void free_dns_message(dns_message_t *msg);
+
+dns_message_t *new_unimplemented_message(dns_message_t *msg);
+dns_message_t *new_response_message(dns_message_t *msg, record_t *record);
 
 #endif
