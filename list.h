@@ -1,5 +1,5 @@
 /*
- * COMP30023 Project 1
+ * COMP30023 Project 2
  * Author: Jonathan Jauhari 1038331
  * 
  * Contains content created for COMP20007 Design of Algorithms 2017
@@ -7,7 +7,7 @@
  * updated in 2020 by Tobias Edwards <tobias.edwards@unimelb.ed.ua>
  *
  * List module containing functions for manipulation of singly-linked lists,
- * specialised to store processes in the context of process scheduling.
+ * specialised to store cached resource records for a DNS server.
  */
 
 #ifndef LIST_H
@@ -16,7 +16,7 @@
 #include "cache_entry.h"
 
 /**
- * The linked list provided contains processes
+ * The linked list provided contains cache entries
  */
 typedef cache_entry_t *data_t;
 
@@ -105,10 +105,5 @@ data_t list_head(list_t *list);
  * Returns the data in the tail of the given list.
  */
 data_t list_tail(list_t *list);
-
-/**
- * Mergesort the given linked list recursively
- */
-void mergesort(list_t *list, int (*cmp)(data_t, data_t));
 
 #endif

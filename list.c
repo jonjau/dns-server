@@ -7,7 +7,7 @@
  * updated in 2020 by Tobias Edwards <tobias.edwards@unimelb.ed.ua>
  * 
  * List module containing functions for manipulation of singly-linked lists,
- * specialised to store processes in the context of process scheduling.
+ * specialised to store cached resource records for a DNS server.
  */
 
 #include "list.h"
@@ -18,10 +18,6 @@
 
 node_t *new_node(data_t data);
 void free_node(node_t *node);
-
-void mergesort_rec(node_t **head_ref, int (*cmp)(data_t, data_t));
-node_t *sorted_merge(node_t *a, node_t *b, int (*cmp)(data_t, data_t));
-void split(node_t *source, node_t **front, node_t **back);
 
 /****************************************************************************/
 
@@ -247,78 +243,4 @@ data_t list_head(list_t *list) {
 data_t list_tail(list_t *list) {
     assert(list != NULL);
     return list->tail->data;
-}
-
-/****************************************************************************/
-
-/**
- * Mergesort the given linked list recursively
- */
-void mergesort(list_t *list, int (*cmp)(data_t, data_t)) {
-    mergesort_rec(&list->head, cmp);
-}
-
-/**
- * Helper function: Mergesort the given linked list recursively
- */
-void mergesort_rec(node_t **head_ref, int (*cmp)(data_t, data_t)) {
-    node_t *head = *head_ref;
-    node_t *a;
-    node_t *b;
-
-    if ((head == NULL) || (head->next == NULL)) {
-        return;
-    }
-    split(head, &a, &b);
-
-    /* recursively sort the sublists */
-    mergesort_rec(&a, cmp);
-    mergesort_rec(&b, cmp);
-
-    /* answer = merge the two sorted lists together */
-    *head_ref = sorted_merge(a, b, cmp);
-}
-
-/**
- * Merge the two list fragments `a` and `b`, in sorted order, into one
- * and return it.
- */
-node_t *sorted_merge(node_t *a, node_t *b, int (*cmp)(data_t, data_t)) {
-    node_t *result = NULL;
-    if (a == NULL) {
-        return b;
-    } else if (b == NULL) {
-        return a;
-    }
-    /* pick either a or b, and recur */
-    if (cmp(a->data, b->data) < 0) {
-        result = a;
-        result->next = sorted_merge(a->next, b, cmp);
-    } else {
-        result = b;
-        result->next = sorted_merge(a, b->next, cmp);
-    }
-    return result;
-}
-
-/**
- * Split a list fragment `source` into two halves, each half is stored as
- * list fragments in `front_ref` and `back_ref`.
- */
-void split(node_t *source, node_t **front_ref, node_t **back_ref) {
-    node_t *slow = source;
-    node_t *fast = source->next;
-
-    /* advance 'fast' two nodes, and advance 'slow' one node */
-    while (fast != NULL) {
-        fast = fast->next;
-        if (fast != NULL) {
-            slow = slow->next;
-            fast = fast->next;
-        }
-    }
-    /* split source in two where slow is, that is the midpoint. */
-    *front_ref = source;
-    *back_ref = slow->next;
-    slow->next = NULL;
 }

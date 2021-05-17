@@ -24,6 +24,7 @@
 #include "cache_entry.h"
 #include "dns_message.h"
 #include "util.h"
+#include "bytes.h"
 
 #define CACHE
 
@@ -187,41 +188,24 @@ void handle_unimplemented(int sockfd, dns_message_t *msg) {
     free_dns_message(reply);
 }
 
-void write_field(bytes_t *bytes, uint16_t field) {
-    uint16_t field_val = htons(field);
-    memcpy(bytes->data + bytes->offset, &field_val, sizeof(field));
-    bytes->offset += sizeof(field);
-}
-
-void write32(bytes_t *bytes, uint32_t field) {
-    uint32_t field_val = htonl(field);
-    memcpy(bytes->data + bytes->offset, &field_val, sizeof(field));
-    bytes->offset += sizeof(field);
-}
 
 dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached) {
     // TODO: change id, ttl, ancount, bytes length
 
     size_t offset0 = msg->bytes->offset;
+    bytes_t *bytes = new_bytes(msg->bytes->size + 28);
 
-    bytes_t *bytes = malloc(sizeof(*bytes));
-    uint16_t new_size = msg->bytes->size + 28;
-    uint8_t *data = malloc(new_size);
-    bytes->data = data;
-    bytes->offset = 0;
-    bytes->size = new_size;
-
-    write_field(bytes, msg->id);
+    write16(bytes, msg->id);
 
     uint16_t flags = get_flags(msg);
     flags |= true << RA_OFFSET;
     flags |= true << QR_OFFSET;
-    write_field(bytes, flags);
+    write16(bytes, flags);
 
-    write_field(bytes, msg->qdcount);
-    write_field(bytes, 1);
-    write_field(bytes, msg->nscount);
-    write_field(bytes, msg->arcount);
+    write16(bytes, msg->qdcount);
+    write16(bytes, 1);
+    write16(bytes, msg->nscount);
+    write16(bytes, msg->arcount);
 
     uint16_t qlen = offset0 - bytes->offset;
     memcpy(bytes->data + bytes->offset, msg->bytes->data + bytes->offset,
@@ -229,28 +213,15 @@ dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached) {
     bytes->offset += qlen;
 
     record_t *record = cached->record;
-    write_field(bytes, 0xc00c);
-    write_field(bytes, record->type);
-    write_field(bytes, record->class);
+    write16(bytes, 0xc00c);
+    write16(bytes, record->type);
+    write16(bytes, record->class);
     write32(bytes, record->ttl);
     uint16_t rdlen = sizeof(struct in6_addr);
-    write_field(bytes, rdlen);
+    write16(bytes, rdlen);
 
-    // unsigned char buf[sizeof(struct in6_addr)];
-
-    // char test[50];
-    // const char *a = (const char *)record->rdata;
-    // int s = inet_pton(AF_INET6, a, buf);
-    // inet_ntop(AF_INET6, buf, test, 50);
-
-    // const char *b = "1:0:0:0:0:0:0:8";
-    // s = inet_pton(AF_INET6, b, buf);
-    // inet_ntop(AF_INET6, buf, test, 50);
-
-    // uint8_t *asdasd = bytes->data + bytes->offset;
     inet_pton(AF_INET6, record->rdata, bytes->data + bytes->offset);
     bytes->offset += rdlen;
-    // uint8_t *asdad = bytes->data + bytes->offset;
 
     uint16_t rest_len = msg->bytes->size - msg->bytes->offset;
     memcpy(bytes->data + bytes->offset,
@@ -258,8 +229,7 @@ dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached) {
 
     dns_message_t *reply = init_dns_message(bytes->data, bytes->size);
 
-    free(bytes->data);
-    free(bytes);
+    free_bytes(bytes);
     return reply;
 }
 

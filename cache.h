@@ -16,7 +16,6 @@ typedef struct {
 cache_t *new_cache(size_t capacity);
 void free_cache(cache_t *cache);
 
-
 cache_entry_t *cache_get(cache_t *cache, char *name);
 cache_entry_t *cache_put(cache_t *cache, record_t *record);
 

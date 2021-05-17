@@ -1,7 +1,7 @@
 # Written by Jonathan Jauhari 1038331, based on the given sample Makefile
 
 CC=gcc
-OBJ=dns_message.o util.o cache.o cache_entry.o list.o
+OBJ=dns_message.o util.o cache.o cache_entry.o list.o bytes.o
 COPT=-Wall -Wpedantic -g
 BIN_PHASE1=phase1
 BIN_PHASE2=dns_svr

@@ -12,6 +12,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "bytes.h"
+
 // bit positions to shift left, used in setting these codes in the message
 #define QR_OFFSET 15
 #define OPCODE_OFFSET 11
@@ -42,14 +44,6 @@ typedef struct {
     uint16_t rdlen;
     char *rdata;
 } record_t;
-
-// An array of bytes along with a stored offset to start reading from and
-// a size
-typedef struct {
-    uint8_t *data;
-    uint16_t size;
-    uint16_t offset;
-} bytes_t;
 
 // Represents a (partial) DNS message. The 'Authority' and 'Additional'
 // sections are omitted. This structure also contains its representation in

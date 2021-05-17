@@ -6,8 +6,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-dns_message_t *cache_evict(cache_t *cache, dns_message_t *msg);
 cache_entry_t *cache_find(cache_t *cache, char *name);
+bool cache_is_full(cache_t *cache);
 
 cache_t *new_cache(size_t capacity) {
     cache_t *cache = malloc(sizeof(*cache));
