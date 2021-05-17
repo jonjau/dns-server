@@ -23,6 +23,19 @@
 #define RA_MASK (1 << RA_OFFSET)
 #define RCODE_MASK (0xF << RCODE_OFFSET)
 
+// bitmask representing the bits to be cleared when reading the name offset
+// in the answers section (16-bits, two leftmost bits one)
+#define NAME_OFFSET_MASK ((1 << 15) | (1 << 14))
+
+// bit positions to shift left, used in setting these codes in the message
+#define QR_OFFSET 15
+#define OPCODE_OFFSET 11
+#define AA_OFFSET 10
+#define TC_OFFSET 9
+#define RD_OFFSET 8
+#define RA_OFFSET 7
+#define RCODE_OFFSET 0
+
 // the number of bytes in the answer section if responding from cache,
 // relies on the assumption of only IPv6 answers in the cache, and that only
 // one answer is in the response
@@ -30,7 +43,8 @@
 
 // the number of bytes in the header of a DNS message
 #define HEADER_SIZE 12
-
+// response code designating functionality that is not implemented
+#define NOT_IMPLEMENTED_RCODE 4
 
 uint8_t *read_domain(uint8_t *domain, bytes_t *bytes);
 char *read_ip_addr(char *addr, uint16_t rdlen, bytes_t *bytes);
@@ -245,8 +259,9 @@ dns_message_t *new_unimplemented_message(dns_message_t *msg) {
            qlen);
     bytes->offset += qlen;
 
-    free(bytes);
-    return init_dns_message(msg->bytes->data, msg->bytes->size);
+    dns_message_t *reply = init_dns_message(bytes->data, bytes->size);
+    free_bytes(bytes);
+    return reply;
 }
 
 // Given a message `msg` that contains ONLY ONE AAAA query AND NO ANSWERS,
@@ -290,6 +305,7 @@ dns_message_t *new_response_message(dns_message_t *msg, record_t *record) {
     memcpy(bytes->data + bytes->offset,
            msg->bytes->data + msg->bytes->offset, rest_len);
 
+    dns_message_t *reply = init_dns_message(bytes->data, bytes->size);
     free_bytes(bytes);
-    return init_dns_message(bytes->data, bytes->size);
+    return reply;
 }
