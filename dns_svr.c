@@ -101,6 +101,7 @@ int main(int argc, char *argv[]) {
             msg_reply = new_unimplemented_message(msg_send);
             log_unimplemented(log_fp);
         } else {
+            // get from cache if possible, otherwise forward to upstream
             char *qname = (char *)msg_send->queries[0].qname;
             cache_entry_t *cached = cache_get(cache, (char *)qname);
             if (cached) {
