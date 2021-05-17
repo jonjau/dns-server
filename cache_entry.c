@@ -63,5 +63,5 @@ int cache_entry_cmp(cache_entry_t *entry1, cache_entry_t *entry2) {
 
 int cache_entry_eq(cache_entry_t *entry1, cache_entry_t *entry2) {
     return strcmp((char *)entry1->record->name,
-                  (char *)entry2->record->name);
+                  (char *)entry2->record->name) == 0;
 }
