@@ -130,8 +130,6 @@ int main(int argc, char *argv[]) {
 
                     // spec: if first answer is not AAAA, then do not log any
                     if (first_record.type == AAAA_RR_TYPE) {
-                        log_answer(log_fp, &first_record);
-
                         if (first_record.ttl != 0) {
                             cache_entry_t *evicted =
                                 cache_put(cache, &first_record);
@@ -143,6 +141,7 @@ int main(int argc, char *argv[]) {
                             }
                             free_cache_entry(cached);
                         }
+                        log_answer(log_fp, &first_record);
                     }
                 }
 
