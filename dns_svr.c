@@ -20,11 +20,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "bytes.h"
 #include "cache.h"
 #include "cache_entry.h"
 #include "dns_message.h"
 #include "util.h"
-#include "bytes.h"
 
 #define CACHE
 
@@ -51,8 +51,10 @@ void log_answer(FILE *fp, record_t *answer);
 void log_cached(FILE *fp, cache_entry_t *entry);
 void log_evicted(FILE *fp, cache_entry_t *entry, cache_entry_t *evicted);
 
-void handle_unimplemented(int sockfd, dns_message_t *msg);
-dns_message_t *new_cached_message(dns_message_t *msg, cache_entry_t *cached);
+dns_message_t *respond_from_cache(dns_message_t *msg_query,
+                                  cache_entry_t *cached, FILE *log_fp);
+dns_message_t *forward_message(int ups_sockfd, dns_message_t *msg_query,
+                               cache_t *cache, FILE *log_fp);
 
 // Listens for DNS "AAAA" queries over TCP on a fixed port, forwarding the
 // requests and responses to/from an upstream server specified by hostname
@@ -84,7 +86,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    dns_message_t *msg_send, *msg_recv;
+    dns_message_t *msg_send, *msg_reply;
     while (true) {
         int sockfd = accept_client_connection(serv_sockfd);
 
@@ -96,58 +98,24 @@ int main(int argc, char *argv[]) {
         // we are allowed to assume only one question per message:
         // if the one question is not for AAAA, log and respond with RCODE 4
         if (msg_send->queries[0].qtype != AAAA_RR_TYPE) {
+            msg_reply = new_unimplemented_message(msg_send);
             log_unimplemented(log_fp);
-            handle_unimplemented(sockfd, msg_send);
         } else {
             char *qname = (char *)msg_send->queries[0].qname;
             cache_entry_t *cached = cache_get(cache, (char *)qname);
             if (cached) {
-                log_cached(log_fp, cached);
-                msg_recv = new_cached_message(msg_send, cached);
-                if (msg_recv->ancount > 0) {
-                    record_t first_record = msg_recv->answers[0];
-                    // spec: if first answer is not AAAA, then do not log any
-                    if (first_record.type == AAAA_RR_TYPE) {
-                        log_answer(log_fp, &first_record);
-                    }
-                }
+                msg_reply = respond_from_cache(msg_send, cached, log_fp);
                 free_cache_entry(cached);
             } else {
                 int ups_sockfd = setup_client_socket(ups, ups_port);
-
-                // forward client's request to upstream server
-                write_dns_message(ups_sockfd, msg_send);
-
-                // wait for reply then log and forward the response to the
-                // client
-                msg_recv = read_dns_message(ups_sockfd);
-
-                if (msg_recv->ancount > 0) {
-                    record_t first_record = msg_recv->answers[0];
-
-                    // spec: if first answer is not AAAA, then do not log any
-                    if (first_record.type == AAAA_RR_TYPE) {
-                        if (first_record.ttl != 0) {
-                            cache_entry_t *evicted =
-                                cache_put(cache, &first_record);
-                            cache_entry_t *cached =
-                                cache_get(cache, (char *)first_record.name);
-                            if (evicted) {
-                                log_evicted(log_fp, cached, evicted);
-                                free_cache_entry(evicted);
-                            }
-                            free_cache_entry(cached);
-                        }
-                        log_answer(log_fp, &first_record);
-                    }
-                }
-
+                msg_reply =
+                    forward_message(ups_sockfd, msg_send, cache, log_fp);
                 close(ups_sockfd);
             }
-
-            write_dns_message(sockfd, msg_recv);
-            free_dns_message(msg_recv);
         }
+        write_dns_message(sockfd, msg_reply);
+        free_dns_message(msg_reply);
+
         free_dns_message(msg_send);
         close(sockfd);
     }
@@ -158,73 +126,50 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-// Given an accepted socket `sockfd`, and a message `msg` that contains a
-// non-AAAA query, write back a message to the client, responding with RCODE
-// NOT_IMPLEMENTED, deep copying the request `msg` to form a reply. Exits if
-// error.
-void handle_unimplemented(int sockfd, dns_message_t *msg) {
-    dns_message_t *reply =
-        init_dns_message(msg->bytes->data, msg->bytes->size);
-    uint16_t flags = get_flags(reply);
-
-    // Respond (QR=1) with RA = true, RCODE = NOT_IMPLEMENTED
-    reply->ra = true;
-    flags |= reply->ra << RA_OFFSET;
-    reply->rcode = NOT_IMPLEMENTED_RCODE;
-    flags |= reply->rcode << RCODE_OFFSET;
-    reply->qr = true;
-    flags |= reply->qr << QR_OFFSET;
-
-    // update the raw bytes to reflect these changes, then write to client
-    flags = htons(flags);
-    uint16_t offset = offsetof(dns_message_t, qr);
-    memcpy(reply->bytes->data + offset, &flags, sizeof(flags));
-
-    write_dns_message(sockfd, reply);
-    free_dns_message(reply);
+// Given a message `msg_query` from the client for a resource record that is
+// in the cache `cached`, return a response message and log events.
+dns_message_t *respond_from_cache(dns_message_t *msg_query,
+                                  cache_entry_t *cached, FILE *log_fp) {
+    dns_message_t *msg_reply =
+        new_response_message(msg_query, cached->record);
+    log_cached(log_fp, cached);
+    // spec: if first answer is not AAAA, then do not log any
+    if (msg_reply->ancount > 0 &&
+        msg_reply->answers[0].type == AAAA_RR_TYPE) {
+        log_answer(log_fp, &msg_reply->answers[0]);
+    }
+    return msg_reply;
 }
 
+// Given a message `msg_query` from the client and an accepted socket
+// `ups_sockfd` to an upstream server, forward the message to upstream,
+// and return the reply, caching the first answer if appropriate, and logging
+// events.
+dns_message_t *forward_message(int ups_sockfd, dns_message_t *msg_query,
+                               cache_t *cache, FILE *log_fp) {
+    // forward client's request to upstream server
+    write_dns_message(ups_sockfd, msg_query);
+    dns_message_t *msg_reply = read_dns_message(ups_sockfd);
 
-dns_message_t *new_cached_message(dns_message_t *msg, cache_entry_t *cached) {
-    size_t offset0 = msg->bytes->offset;
-    bytes_t *bytes = new_bytes(msg->bytes->size + 28);
-
-    write16(bytes, msg->id);
-
-    uint16_t flags = get_flags(msg);
-    flags |= true << RA_OFFSET;
-    flags |= true << QR_OFFSET;
-    write16(bytes, flags);
-
-    write16(bytes, msg->qdcount);
-    write16(bytes, 1);
-    write16(bytes, msg->nscount);
-    write16(bytes, msg->arcount);
-
-    uint16_t qlen = offset0 - bytes->offset;
-    memcpy(bytes->data + bytes->offset, msg->bytes->data + bytes->offset,
-           qlen);
-    bytes->offset += qlen;
-
-    record_t *record = cached->record;
-    write16(bytes, 0xc00c);
-    write16(bytes, record->type);
-    write16(bytes, record->class);
-    write32(bytes, record->ttl);
-    uint16_t rdlen = sizeof(struct in6_addr);
-    write16(bytes, rdlen);
-
-    inet_pton(AF_INET6, record->rdata, bytes->data + bytes->offset);
-    bytes->offset += rdlen;
-
-    uint16_t rest_len = msg->bytes->size - msg->bytes->offset;
-    memcpy(bytes->data + bytes->offset,
-           msg->bytes->data + msg->bytes->offset, rest_len);
-
-    dns_message_t *reply = init_dns_message(bytes->data, bytes->size);
-
-    free_bytes(bytes);
-    return reply;
+    cache_entry_t *evicted, *cached;
+    if (msg_reply->ancount > 0) {
+        record_t first_record = msg_reply->answers[0];
+        // spec: if first answer is not AAAA, then do not log any
+        if (first_record.type == AAAA_RR_TYPE) {
+            if (first_record.ttl != 0) {
+                // cache if possible, logging evictions
+                evicted = cache_put(cache, &first_record);
+                cached = cache_get(cache, (char *)first_record.name);
+                if (evicted) {
+                    log_evicted(log_fp, cached, evicted);
+                    free_cache_entry(evicted);
+                }
+                free_cache_entry(cached);
+            }
+            log_answer(log_fp, &first_record);
+        }
+    }
+    return msg_reply;
 }
 
 // This function contains code from Lab 9 solutions. Creates and returns a

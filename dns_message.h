@@ -14,6 +14,10 @@
 
 #include "bytes.h"
 
+// bitmask representing the bits to be cleared when reading the name offset
+// in the answers section (16-bits, two leftmost bits one)
+#define NAME_OFFSET_MASK ((1 << 15) | (1 << 14))
+
 // bit positions to shift left, used in setting these codes in the message
 #define QR_OFFSET 15
 #define OPCODE_OFFSET 11
@@ -69,8 +73,10 @@ typedef struct {
 
 dns_message_t *new_dns_message(uint16_t nbytes);
 dns_message_t *init_dns_message(uint8_t *data,  uint16_t nbytes);
-uint16_t get_flags(dns_message_t *msg);
 
 void free_dns_message(dns_message_t *msg);
+
+dns_message_t *new_unimplemented_message(dns_message_t *msg);
+dns_message_t *new_response_message(dns_message_t *msg, record_t *record);
 
 #endif

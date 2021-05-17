@@ -23,12 +23,19 @@
 #define RA_MASK (1 << RA_OFFSET)
 #define RCODE_MASK (0xF << RCODE_OFFSET)
 
-// bitmask representing the bits to be cleared when reading the name offset
-// in the answers section (16-bits, two leftmost bits one)
-#define NAME_OFFSET_MASK ((1 << 15) | (1 << 14))
+// the number of bytes in the answer section if responding from cache,
+// relies on the assumption of only IPv6 answers in the cache, and that only
+// one answer is in the response
+#define ANSWER_SIZE 28
+
+// the number of bytes in the header of a DNS message
+#define HEADER_SIZE 12
+
 
 uint8_t *read_domain(uint8_t *domain, bytes_t *bytes);
 char *read_ip_addr(char *addr, uint16_t rdlen, bytes_t *bytes);
+
+uint16_t get_flags(dns_message_t *msg);
 
 void read_header(dns_message_t *msg);
 void read_queries(dns_message_t *msg);
@@ -215,4 +222,74 @@ uint16_t get_flags(dns_message_t *msg) {
     flags |= msg->ra << RA_OFFSET;
     flags |= msg->rcode << RCODE_OFFSET;
     return flags;
+}
+
+// Given a message `msg` that contains ONLY ONE non-AAAA query AND NO
+// ANSWERS, return a message to be sent back a message to the client,
+// responding with RCODE NOT_IMPLEMENTED, deep copying the request `msg` to
+// form a reply. Exits if error.
+dns_message_t *new_unimplemented_message(dns_message_t *msg) {
+    bytes_t *bytes = new_bytes(msg->bytes->size);
+    write16(bytes, msg->id);
+
+    // Respond (QR=1) with RA = true, RCODE = NOT_IMPLEMENTED
+    uint16_t flags = get_flags(msg);
+    flags |= true << RA_OFFSET;
+    flags |= NOT_IMPLEMENTED_RCODE << RCODE_OFFSET;
+    flags |= true << QR_OFFSET;
+    write16(bytes, flags);
+
+    // copy all the questions
+    uint16_t qlen = msg->bytes->offset - bytes->offset;
+    memcpy(bytes->data + bytes->offset, msg->bytes->data + bytes->offset,
+           qlen);
+    bytes->offset += qlen;
+
+    free(bytes);
+    return init_dns_message(msg->bytes->data, msg->bytes->size);
+}
+
+// Given a message `msg` that contains ONLY ONE AAAA query AND NO ANSWERS,
+// return a message to be sent back a message to the client, responding with
+// the record in `cached` as the only answer, deep copying the request `msg`
+// to form a reply. Exits if error.
+dns_message_t *new_response_message(dns_message_t *msg, record_t *record) {
+    bytes_t *bytes = new_bytes(msg->bytes->size + ANSWER_SIZE);
+    write16(bytes, msg->id);
+
+    // Respond (QR=1) with RA = true
+    uint16_t flags = get_flags(msg);
+    flags |= true << RA_OFFSET;
+    flags |= true << QR_OFFSET;
+    write16(bytes, flags);
+
+    write16(bytes, msg->qdcount);
+    write16(bytes, 1);  // one answer in the reply
+    write16(bytes, msg->nscount);
+    write16(bytes, msg->arcount);
+
+    // copy all the questions
+    uint16_t qlen = msg->bytes->offset - bytes->offset;
+    memcpy(bytes->data + bytes->offset, msg->bytes->data + bytes->offset,
+           qlen);
+    bytes->offset += qlen;
+
+    // name offset field is fixed, based on assumptions
+    write16(bytes, (NAME_OFFSET_MASK | HEADER_SIZE));
+    write16(bytes, record->type);
+    write16(bytes, record->class);
+    write32(bytes, record->ttl);
+
+    uint16_t rdlen = sizeof(struct in6_addr);
+    write16(bytes, rdlen);
+    inet_pton(AF_INET6, record->rdata, bytes->data + bytes->offset);
+    bytes->offset += rdlen;
+
+    // copy additional records if any
+    uint16_t rest_len = msg->bytes->size - msg->bytes->offset;
+    memcpy(bytes->data + bytes->offset,
+           msg->bytes->data + msg->bytes->offset, rest_len);
+
+    free_bytes(bytes);
+    return init_dns_message(bytes->data, bytes->size);
 }
