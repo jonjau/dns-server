@@ -24,7 +24,7 @@
 #define RCODE_MASK (0xF << RCODE_OFFSET)
 
 // bitmask representing the bits to be cleared when reading the name offset
-// in the answers section
+// in the answers section (16-bits, two leftmost bits one)
 #define NAME_OFFSET_MASK ((1 << 15) | (1 << 14))
 
 uint8_t *read_domain(uint8_t *domain, bytes_t *bytes);
@@ -172,7 +172,7 @@ void read_answers(dns_message_t *msg) {
         read16(&name_offset, bytes);
 
         // check that first (leftmost) two bits in 16-bit field are 0b11.
-        assert((name_offset & NAME_OFFSET_MASK) == 0);
+        assert(((name_offset & NAME_OFFSET_MASK) ^ NAME_OFFSET_MASK) == 0);
 
         // clear first two bits (16th and 15th), this is the offset needed
         name_offset &= ~NAME_OFFSET_MASK;

@@ -28,8 +28,8 @@
 
 #define CACHE
 
+// maximum number of answers to cache
 #define CACHE_CAPACITY 5
-
 // maximum number of connection requests to be queued up
 #define CONNECTION_QUEUE_SIZE 5
 // path to the .log file to be created/written to
@@ -52,7 +52,7 @@ void log_cached(FILE *fp, cache_entry_t *entry);
 void log_evicted(FILE *fp, cache_entry_t *entry, cache_entry_t *evicted);
 
 void handle_unimplemented(int sockfd, dns_message_t *msg);
-dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached);
+dns_message_t *new_cached_message(dns_message_t *msg, cache_entry_t *cached);
 
 // Listens for DNS "AAAA" queries over TCP on a fixed port, forwarding the
 // requests and responses to/from an upstream server specified by hostname
@@ -103,7 +103,7 @@ int main(int argc, char *argv[]) {
             cache_entry_t *cached = cache_get(cache, (char *)qname);
             if (cached) {
                 log_cached(log_fp, cached);
-                msg_recv = get_cached(msg_send, cached);
+                msg_recv = new_cached_message(msg_send, cached);
                 if (msg_recv->ancount > 0) {
                     record_t first_record = msg_recv->answers[0];
                     // spec: if first answer is not AAAA, then do not log any
@@ -185,9 +185,7 @@ void handle_unimplemented(int sockfd, dns_message_t *msg) {
 }
 
 
-dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached) {
-    // TODO: change id, ttl, ancount, bytes length
-
+dns_message_t *new_cached_message(dns_message_t *msg, cache_entry_t *cached) {
     size_t offset0 = msg->bytes->offset;
     bytes_t *bytes = new_bytes(msg->bytes->size + 28);
 
@@ -392,6 +390,8 @@ void log_answer(FILE *fp, record_t *answer) {
     fflush(fp);
 }
 
+// Print to `fp` the timestamped logs for when an cache entry that has the
+// resource record being requested is found in the cache of this server.
 void log_cached(FILE *fp, cache_entry_t *entry) {
     char timestamp[TIMESTAMP_LEN];
     get_timestamp(timestamp, TIMESTAMP_LEN);
@@ -404,6 +404,8 @@ void log_cached(FILE *fp, cache_entry_t *entry) {
     fflush(fp);
 }
 
+// Print to `fp` the timestamped logs for when an cache entry that has the
+// resource record being requested replaced another in this server's cache.
 void log_evicted(FILE *fp, cache_entry_t *entry, cache_entry_t *evicted) {
     char timestamp[TIMESTAMP_LEN];
     get_timestamp(timestamp, TIMESTAMP_LEN);
