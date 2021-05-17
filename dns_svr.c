@@ -54,10 +54,6 @@ void log_evicted(FILE *fp, cache_entry_t *entry, cache_entry_t *evicted);
 void handle_unimplemented(int sockfd, dns_message_t *msg);
 dns_message_t *get_cached(dns_message_t *msg, cache_entry_t *cached);
 
-// FIXME: respond with RCODE 4 AND NOTHING ELSE, CONSIDER STARTING FROM
-// SCRATCH?
-// TODO: malloc size problem???
-
 // Listens for DNS "AAAA" queries over TCP on a fixed port, forwarding the
 // requests and responses to/from an upstream server specified by hostname
 // and port given as two command line arguments. Logs this server's events

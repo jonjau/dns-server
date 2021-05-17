@@ -1,3 +1,11 @@
+/**
+ * COMP30023 Project 2
+ * Author: Jonathan Jauhari 1038331
+ * 
+ * Bytes array module containing functions for manipulation
+ * (checked read/write) of bytes into/from an array.
+ */
+
 #ifndef BYTES_H
 #define BYTES_H
 

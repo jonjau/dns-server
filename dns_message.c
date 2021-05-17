@@ -23,6 +23,9 @@
 #define RA_MASK (1 << RA_OFFSET)
 #define RCODE_MASK (0xF << RCODE_OFFSET)
 
+// bitmask representing the bits to be cleared when reading the name offset
+// in the answers section
+#define NAME_OFFSET_MASK ((1 << 15) | (1 << 14))
 
 uint8_t *read_domain(uint8_t *domain, bytes_t *bytes);
 char *read_ip_addr(char *addr, uint16_t rdlen, bytes_t *bytes);
@@ -169,10 +172,10 @@ void read_answers(dns_message_t *msg) {
         read16(&name_offset, bytes);
 
         // check that first (leftmost) two bits in 16-bit field are 0b11.
-        assert(((name_offset >> 14) ^ 0x3) == 0);
+        assert((name_offset & NAME_OFFSET_MASK) == 0);
 
         // clear first two bits (16th and 15th), this is the offset needed
-        name_offset &= ~((1 << 15) | (1 << 14));
+        name_offset &= ~NAME_OFFSET_MASK;
 
         // save the old offset before temporarily setting the name offset
         // to read the domain name, then resetting back to the old offset.
@@ -186,12 +189,6 @@ void read_answers(dns_message_t *msg) {
 
         read16(&answer.type, bytes);
         read16(&answer.class, bytes);
-
-        // read 2 16-bit pieces and get the 32-bit TTL
-        // uint16_t field1, field2;
-        // read16(&field1, bytes);
-        // read16(&field2, bytes);
-        // answer.ttl = field1 << 0x10 | field2;
         read32(&answer.ttl, bytes);
 
         read16(&answer.rdlen, bytes);
