@@ -259,6 +259,11 @@ dns_message_t *new_unimplemented_message(dns_message_t *msg) {
            qlen);
     bytes->offset += qlen;
 
+    // copy additional records if any
+    uint16_t rest_len = msg->bytes->size - msg->bytes->offset;
+    memcpy(bytes->data + bytes->offset,
+           msg->bytes->data + msg->bytes->offset, rest_len);
+
     dns_message_t *reply = init_dns_message(bytes->data, bytes->size);
     free_bytes(bytes);
     return reply;
