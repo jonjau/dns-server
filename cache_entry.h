@@ -17,9 +17,11 @@
 typedef struct {
     record_t *record;
     time_t cached_time;
+    time_t expiry_time;
 } cache_entry_t;
 
-cache_entry_t *new_cache_entry(record_t *record, time_t cached_time);
+cache_entry_t *new_cache_entry(record_t *record, time_t cached_time,
+                               time_t expiry_time);
 void free_cache_entry(cache_entry_t *cache_entry);
 
 bool cache_entry_is_expired(cache_entry_t *cache_entry);

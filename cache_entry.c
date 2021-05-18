@@ -13,9 +13,10 @@
 #include <string.h>
 
 // Create and returns a new cache entry containing the record (this function
-// will copy it) and the time it was cached. May be used as a deep copy
-// function.
-cache_entry_t *new_cache_entry(record_t *record, time_t cached_time) {
+// will copy it) and the time it was cached/will expire. May be used as a deep
+// copy function.
+cache_entry_t *new_cache_entry(record_t *record, time_t cached_time,
+                               time_t expiry_time) {
     cache_entry_t *entry = malloc(sizeof(*entry));
     record_t *new_record = malloc(sizeof(*new_record));
     assert(entry && new_record);
@@ -34,6 +35,7 @@ cache_entry_t *new_cache_entry(record_t *record, time_t cached_time) {
 
     entry->record = new_record;
     entry->cached_time = cached_time;
+    entry->expiry_time = expiry_time;
 
     return entry;
 }
@@ -78,9 +80,7 @@ bool cache_entry_eq(cache_entry_t *entry1, cache_entry_t *entry2) {
 // to `timestamp`.
 char *cache_entry_get_expiry(cache_entry_t *cache_entry, char *timestamp,
                              size_t len) {
-    time_t curr_time = time(NULL);
-    time_t expiry = curr_time + cache_entry->record->ttl;
-    struct tm *tm = gmtime(&expiry);
+    struct tm *tm = gmtime(&cache_entry->expiry_time);
 
     strftime(timestamp, len, "%FT%T%z", tm);
     return timestamp;

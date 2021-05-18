@@ -55,8 +55,8 @@ cache_entry_t *cache_get(cache_t *cache, char *name) {
         } else {
             entry->record->ttl = entry->record->ttl - diff;
         }
-        cache_entry_t *new_entry =
-            new_cache_entry(entry->record, entry->cached_time);
+        cache_entry_t *new_entry = new_cache_entry(
+            entry->record, entry->cached_time, entry->expiry_time);
         if (!cache_entry_is_expired(new_entry)) {
             return new_entry;
         }
@@ -87,14 +87,15 @@ bool cache_is_full(cache_t *cache) {
 
 // Puts a resource record `record` into `cache`. If an expired entry holding
 // that record exists, it is evicted and replaced by `record`. Otherwise, if
-// the cache is full, then the record with the lowest TTL is replaced instead.
-// In both cases, the record evicted is returned (remember to free this).
-// If no record is evicted, then this function returns NULL.
+// the cache is full, then the record with the lowest TTL is replaced
+// instead. In both cases, the record evicted is returned (remember to free
+// this). If no record is evicted, then this function returns NULL.
 cache_entry_t *cache_put(cache_t *cache, record_t *record) {
     assert(cache && record);
 
     time_t curr_time = time(NULL);
-    cache_entry_t *new_entry = new_cache_entry(record, curr_time);
+    cache_entry_t *new_entry =
+        new_cache_entry(record, curr_time, curr_time + record->ttl);
 
     cache_entry_t *to_evict = cache_find(cache, (char *)record->name);
     if (to_evict && cache_entry_is_expired(to_evict)) {
