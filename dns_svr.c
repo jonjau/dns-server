@@ -5,6 +5,8 @@
  * Main program: a DNS server that accepts requests for IPv6 addresses and
  * serves them either from its own cache or by querying servers higher up
  * the hierarchy (upstream). This server operates over TCP.
+ * 
+ * Assumes only one query per DNS message.
  */
 
 #define _POSIX_C_SOURCE 200112L
@@ -47,7 +49,6 @@ void write_dns_message(int fd, dns_message_t *msg);
 void log_query(FILE *fp, query_t *query);
 void log_unimplemented(FILE *fp);
 void log_answer(FILE *fp, record_t *answer);
-
 void log_cached(FILE *fp, cache_entry_t *entry);
 void log_evicted(FILE *fp, cache_entry_t *entry, cache_entry_t *evicted);
 
