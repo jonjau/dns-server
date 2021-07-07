@@ -45,6 +45,7 @@
 spec/
 unused/
 testcases/
+solution/
 
 test0.sh
 grind.sh

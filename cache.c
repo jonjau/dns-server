@@ -1,4 +1,3 @@
-
 /**
  * COMP30023 Project 2
  * Author: Jonathan Jauhari 1038331
@@ -24,7 +23,6 @@ cache_t *new_cache(size_t capacity) {
     assert(cache);
 
     cache->entries = new_list();
-    ;
     cache->capacity = capacity;
 
     return cache;
